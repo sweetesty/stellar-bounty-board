@@ -17,7 +17,6 @@
     "@asteasolutions/zod-to-openapi": "^8.5.0",
     "cors": "^2.8.6",
     "express-rate-limit": "^8.4.1",
-    "lucide-react": "^1.11.0",
     "swagger-ui-express": "^5.0.1",
     "yaml": "^2.8.3",
     "zod": "^4.3.6"
