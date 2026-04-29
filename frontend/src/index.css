@@ -477,6 +477,49 @@ textarea:focus {
   color: var(--muted);
 }
 
+.board-sort {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.board-sort__label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.board-sort__label svg {
+  color: var(--muted);
+  flex-shrink: 0;
+}
+
+.board-sort__label span {
+  font-weight: 500;
+  color: var(--ink);
+}
+
+.board-sort select {
+  width: auto;
+  min-width: 100px;
+  border-radius: 18px;
+  border: 1px solid rgba(54, 63, 59, 0.14);
+  background: rgba(255, 255, 255, 0.72);
+  padding: 6px 12px;
+  color: var(--ink);
+  font: inherit;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.board-sort select:focus {
+  outline: none;
+  border-color: var(--mint);
+}
+
 .board-filters {
   display: grid;
   gap: 16px;

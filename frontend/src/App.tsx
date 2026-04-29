@@ -867,6 +867,33 @@ placeholder="help wanted, backend"
               <span className="panel-kicker">Contributor flow</span>
               <h2>Bounty board</h2>
             </div>
+            <div className="board-sort">
+              <label className="board-sort__label">
+                <ArrowUpDown size={16} />
+                <span>Amount</span>
+                <select
+                  value={sortOption === "reward-high" && sortDirection === "desc"
+                    ? "reward-high-desc"
+                    : sortOption === "reward-low" && sortDirection === "asc"
+                    ? "reward-low-asc"
+                    : "reward-high-desc"
+                  }
+                  onChange={(event) => {
+                    const value = event.target.value;
+                    if (value === "reward-high-desc") {
+                      setSortOption("reward-high");
+                      setSortDirection("desc");
+                    } else if (value === "reward-low-asc") {
+                      setSortOption("reward-low");
+                      setSortDirection("asc");
+                    }
+                  }}
+                >
+                  <option value="reward-high-desc">High → Low</option>
+                  <option value="reward-low-asc">Low → High</option>
+                </select>
+              </label>
+            </div>
             <HandCoins size={18} />
           </div>
 
