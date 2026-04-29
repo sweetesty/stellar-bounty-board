@@ -108,6 +108,37 @@ const STATUS_WEIGHTS: Record<BountyStatus, number> = {
   "expired": 0,
 };
 
+function normalizeTerms(values: string[]): string[] {
+  return [...new Set(values.map((value) => value.trim().toLowerCase()).filter(Boolean))];
+}
+
+function getBountySkillTerms(bounty: Bounty): string[] {
+  return normalizeTerms(bounty.labels.map((label) => label.name));
+}
+
+export function scoreMatch(bounty: Bounty, skills: string[]): number {
+  const bountySkills = getBountySkillTerms(bounty);
+  const contributorSkills = normalizeTerms(skills);
+
+  if (bountySkills.length === 0 || contributorSkills.length === 0) {
+    return 0;
+  }
+
+  const bountySkillSet = new Set(bountySkills);
+  const contributorSkillSet = new Set(contributorSkills);
+  let overlap = 0;
+
+  for (const skill of bountySkillSet) {
+    if (contributorSkillSet.has(skill)) {
+      overlap += 1;
+    }
+  }
+
+  const unionSize = new Set([...bountySkillSet, ...contributorSkillSet]).size;
+
+  return unionSize > 0 ? Math.round((overlap / unionSize) * 100) / 100 : 0;
+}
+
 export function calculateRecommendationScore(
   bounty: Bounty,
   profile: ContributorProfile
@@ -120,20 +151,20 @@ export function calculateRecommendationScore(
   const labelScore = bounty.labels.reduce((acc, label) => {
     const normalizedLabel = label.name.toLowerCase();
     const weight = LABEL_WEIGHTS[normalizedLabel] || 0.1;
-    
+
     if (profile.completedLabels.includes(normalizedLabel)) {
       reasons.push(`You've worked with "${label}" before`);
       return acc + weight * 1.5;
     }
-    
+
     if (normalizedLabel === "good first issue" || normalizedLabel === "beginner friendly") {
       reasons.push(`Great for getting started`);
       return acc + weight;
     }
-    
+
     return acc + weight;
   }, 0);
-  
+
   totalScore += labelScore;
   maxPossibleScore += bounty.labels.length * 1.5;
 
@@ -188,7 +219,15 @@ export function generateRecommendations(
       };
     })
     .filter(rec => rec.score > 0.1) // Only include meaningful recommendations
-    .sort((a, b) => b.score - a.score)
+    .sort((a, b) => {
+      const scoreDifference = b.score - a.score;
+
+      if (scoreDifference !== 0) {
+        return scoreDifference;
+      }
+
+      return scoreMatch(b.bounty, profile.completedLabels) - scoreMatch(a.bounty, profile.completedLabels);
+    })
     .slice(0, limit);
 
   return recommendations;
@@ -216,14 +255,14 @@ export function updateProfileFromBounties(
   const newLabels = completedBounties
     .filter(bounty => bounty.status === "released")
     .flatMap(bounty => bounty.labels.map(label => label.name.toLowerCase()));
-  
+
   updatedProfile.completedLabels = [...new Set([...profile.completedLabels, ...newLabels])];
 
   // Update preferred repos
   const newRepos = completedBounties
     .filter(bounty => bounty.status === "released")
     .map(bounty => bounty.repo.split('/')[0]); // Get owner part
-  
+
   updatedProfile.preferredRepos = [...new Set([...profile.preferredRepos, ...newRepos])];
 
   // Update reward range
