@@ -1,4 +1,4 @@
-import { FormEvent, ReactNode, useEffect, useMemo, useRef, useState } from "react";
+import { FormEvent, ReactNode, memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowUpRight,
   Coins,
@@ -140,7 +140,7 @@ function formatTimestamp(value?: number): string {
   return new Date(value * 1000).toLocaleString();
 }
 
-function BountyAmount({ bounty }: { bounty: Bounty }) {
+const BountyAmount = memo(function BountyAmount({ bounty }: { bounty: Bounty }) {
   const [usdAmount, setUsdAmount] = useState<string | null>(null);
 
   useEffect(() => {
@@ -171,7 +171,131 @@ function BountyAmount({ bounty }: { bounty: Bounty }) {
       {usdAmount && <span>{usdAmount}</span>}
     </div>
   );
+});
+
+type BountyCardProps = {
+  bounty: Bounty;
+  onOpen: (id: string) => void;
+  renderActionButton: (
+    bounty: Bounty,
+    action: { action: "reserve" | "submit" | "release" | "refund"; label: string; title: string },
+  ) => ReactNode;
+};
+
+// Custom comparator: skip re-renders when the underlying bounty data is
+// unchanged, even if parent recreated callback identities. `statusCopy` and
+// `actionCopy` come from a stable module-scope import.
+function bountyCardPropsEqual(prev: BountyCardProps, next: BountyCardProps): boolean {
+  const a = prev.bounty;
+  const b = next.bounty;
+  return (
+    a.id === b.id &&
+    a.status === b.status &&
+    a.amount === b.amount &&
+    a.tokenSymbol === b.tokenSymbol &&
+    a.contributor === b.contributor &&
+    a.maintainer === b.maintainer &&
+    a.title === b.title &&
+    a.summary === b.summary &&
+    a.deadlineAt === b.deadlineAt &&
+    a.submissionUrl === b.submissionUrl &&
+    a.releasedTxHash === b.releasedTxHash &&
+    a.refundedTxHash === b.refundedTxHash &&
+    a.labels === b.labels
+  );
 }
+
+const BountyCard = memo(function BountyCard({ bounty, onOpen, renderActionButton }: BountyCardProps) {
+  return (
+    <article
+      className="bounty-card"
+      role="link"
+      tabIndex={0}
+      onClick={() => onOpen(bounty.id)}
+      onKeyDown={(event) => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          onOpen(bounty.id);
+        }
+      }}
+    >
+      <div className="bounty-card__top">
+        <div>
+          <span
+            className={`status-pill status-pill--${bounty.status}`}
+            title={statusCopy[bounty.status].description}
+            aria-label={`${statusCopy[bounty.status].label}: ${statusCopy[bounty.status].description}`}
+          >
+            {statusCopy[bounty.status].label}
+          </span>
+          <h3>{bounty.title}</h3>
+        </div>
+      </div>
+
+      <p className="bounty-summary">{bounty.summary}</p>
+
+      <div className="meta-grid">
+        <div>
+          <span className="meta-label">Issue</span>
+          <strong>
+            <a
+              className="inline-link"
+              href={`https://github.com/${bounty.repo}/issues/${bounty.issueNumber}`}
+              target="_blank"
+              rel="noreferrer"
+            >
+              {bounty.repo} #{bounty.issueNumber}
+            </a>
+          </strong>
+        </div>
+        <div>
+          <span className="meta-label">Deadline</span>
+          <strong>{formatRelativeDeadline(bounty.deadlineAt)}</strong>
+        </div>
+        <div>
+          <span className="meta-label">Maintainer</span>
+          <strong>{shortAddress(bounty.maintainer)}</strong>
+        </div>
+        <div>
+          <span className="meta-label">Contributor</span>
+          <strong>{bounty.contributor ? shortAddress(bounty.contributor) : "Open"}</strong>
+        </div>
+        {bounty.status === "released" && bounty.releasedTxHash && (
+          <div>
+            <span className="meta-label">Release tx</span>
+            <strong>{`${bounty.releasedTxHash.slice(0, 10)}...`}</strong>
+          </div>
+        )}
+        {bounty.status === "refunded" && bounty.refundedTxHash && (
+          <div>
+            <span className="meta-label">Refund tx</span>
+            <strong>{`${bounty.refundedTxHash.slice(0, 10)}...`}</strong>
+          </div>
+        )}
+      </div>
+
+      <div className="chip-row">
+        {bounty.labels.map((label) => (
+          <span className="chip" key={label.name}>{label.name}</span>
+        ))}
+      </div>
+
+      <p className="status-helper">
+        <strong>{statusCopy[bounty.status].label}:</strong> {statusCopy[bounty.status].description}
+      </p>
+
+      {bounty.submissionUrl && (
+        <a className="submission-link" href={bounty.submissionUrl} target="_blank" rel="noreferrer">
+          Review submission <ArrowUpRight size={16} />
+        </a>
+      )}
+
+      <div className="action-row">
+        {(actionCopy[bounty.status] ?? []).map((action) => renderActionButton(bounty, action))}
+      </div>
+    </article>
+  );
+}, bountyCardPropsEqual);
 
 function App() {
   const { dark, toggle: toggleDark } = useDarkMode();
@@ -418,6 +542,13 @@ function App() {
       setSubmitting(false);
     }
   }
+
+  const handleOpenBounty = useCallback(
+    (id: string) => {
+      navigate(`/bounties/${encodeURIComponent(id)}`);
+    },
+    [navigate],
+  );
 
   function renderActionButton(
     bounty: Bounty,
@@ -1104,99 +1235,14 @@ placeholder="help wanted, backend"
                   </div>
                   <div className="repo-group__bounties">
                     {repoBounties.map((bounty) => (
-                <article
-                  className="bounty-card"
-                  key={bounty.id}
-                  role="link"
-                  tabIndex={0}
-                  onClick={() => navigate(`/bounties/${encodeURIComponent(bounty.id)}`)}
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter" || event.key === " ") {
-                      event.preventDefault();
-                      navigate(`/bounties/${encodeURIComponent(bounty.id)}`);
-                    }
-                  }}
-                >
-                  <div className="bounty-card__top">
-                    <div>
-                      <span
-                        className={`status-pill status-pill--${bounty.status}`}
-                        title={statusCopy[bounty.status].description}
-                        aria-label={`${statusCopy[bounty.status].label}: ${statusCopy[bounty.status].description}`}
-                      >
-                        {statusCopy[bounty.status].label}
-                      </span>
-                      <h3>{bounty.title}</h3>
-                    </div>
-
-                  </div>
-
-                  <p className="bounty-summary">{bounty.summary}</p>
-
-                  <div className="meta-grid">
-                    <div>
-                      <span className="meta-label">Issue</span>
-                      <strong>
-                        <a
-                          className="inline-link"
-                          href={`https://github.com/${bounty.repo}/issues/${bounty.issueNumber}`}
-                          target="_blank"
-                          rel="noreferrer"
-                        >
-                          {bounty.repo} #{bounty.issueNumber}
-                        </a>
-                      </strong>
-                    </div>
-                    <div>
-                      <span className="meta-label">Deadline</span>
-                      <strong>{formatRelativeDeadline(bounty.deadlineAt)}</strong>
-                    </div>
-                    <div>
-                      <span className="meta-label">Maintainer</span>
-                      <strong>{shortAddress(bounty.maintainer)}</strong>
-                    </div>
-                    <div>
-                      <span className="meta-label">Contributor</span>
-                      <strong>{bounty.contributor ? shortAddress(bounty.contributor) : "Open"}</strong>
-                    </div>
-                    {bounty.status === "released" && bounty.releasedTxHash && (
-                      <div>
-                        <span className="meta-label">Release tx</span>
-                        <strong>{`${bounty.releasedTxHash.slice(0, 10)}...`}</strong>
-                      </div>
-                    )}
-                    {bounty.status === "refunded" && bounty.refundedTxHash && (
-                      <div>
-                        <span className="meta-label">Refund tx</span>
-                        <strong>{`${bounty.refundedTxHash.slice(0, 10)}...`}</strong>
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="chip-row">
-                    {bounty.labels.map((label) => (
-                      <span className="chip" key={label.name}>
-  {label.name}
-</span>
+                      <BountyCard
+                        key={bounty.id}
+                        bounty={bounty}
+                        onOpen={handleOpenBounty}
+                        renderActionButton={renderActionButton}
+                      />
                     ))}
                   </div>
-
-                  <p className="status-helper">
-                    <strong>{statusCopy[bounty.status].label}:</strong> {statusCopy[bounty.status].description}
-                  </p>
-
-                  {bounty.submissionUrl && (
-                    <a className="submission-link" href={bounty.submissionUrl} target="_blank" rel="noreferrer">
-                      Review submission <ArrowUpRight size={16} />
-                    </a>
-                  )}
-
-                  <div className="action-row">
-                    {(actionCopy[bounty.status] ?? []).map((action) => renderActionButton(bounty, action))}
-                  </div>
-                </article>
-              ))}
-              </div>
             </div>
           ))}
             </div>

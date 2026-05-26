@@ -1,7 +1,8 @@
 
-import { ReactNode, useCallback, useEffect, useRef, useState } from "react";
-import { ArrowUpRight, Check, Clock, Copy, Printer } from "lucide-react";
+import { ReactNode, useEffect, useRef, useState } from "react";
+import { ArrowUpRight, Clock, Printer } from "lucide-react";
 
+import CopyIcon from "./CopyIcons";
 import UsdAmount from "./UsdAmount";
 import type { Bounty, BountyEvent, BountyStatus } from "./types";
 
@@ -24,42 +25,6 @@ type Props = {
   ) => ReactNode;
   formatTimestamp: (value?: number) => string;
 };
-
-function useCopyToClipboard(timeout = 2000) {
-  const [copiedKey, setCopiedKey] = useState<string | null>(null);
-
-  const copy = useCallback(
-    (text: string, key: string) => {
-      void navigator.clipboard.writeText(text).then(() => {
-        setCopiedKey(key);
-        setTimeout(() => setCopiedKey(null), timeout);
-      });
-    },
-    [timeout],
-  );
-
-  return { copiedKey, copy };
-}
-
-function CopyButton({ text, label }: { text: string; label: string }) {
-  const { copiedKey, copy } = useCopyToClipboard();
-  const copied = copiedKey !== null;
-
-  return (
-    <span className="copy-button-wrapper">
-      <button
-        type="button"
-        className="copy-button"
-        aria-label={copied ? "Copied!" : `Copy ${label}`}
-        title={copied ? "Copied!" : `Copy ${label}`}
-        onClick={() => copy(text, label)}
-      >
-        {copied ? <Check size={14} /> : <Copy size={14} />}
-      </button>
-      {copied && <span className="copy-tooltip">Copied!</span>}
-    </span>
-  );
-}
 
 function useBountyStatusAnnouncement(
   bounty: Bounty | null,
@@ -232,7 +197,7 @@ export default function BountyDetailPage({
                 <span className="meta-label">Bounty ID</span>
                 <strong className="copy-row">
                   {bounty.id}
-                  <CopyButton text={bounty.id} label="bounty ID" />
+                  <CopyIcon text={bounty.id} label="bounty ID" />
                 </strong>
               </div>
               <div>
@@ -260,7 +225,7 @@ export default function BountyDetailPage({
                 <span className="meta-label">Maintainer</span>
                 <strong className="copy-row">
                   {bounty.maintainer}
-                  <CopyButton text={bounty.maintainer} label="maintainer wallet address" />
+                  <CopyIcon text={bounty.maintainer} label="maintainer wallet address" />
                 </strong>
               </div>
               <div>
@@ -268,7 +233,7 @@ export default function BountyDetailPage({
                 <strong className="copy-row">
                   {bounty.contributor ?? "Open"}
                   {bounty.contributor && (
-                    <CopyButton text={bounty.contributor} label="contributor address" />
+                    <CopyIcon text={bounty.contributor} label="contributor address" />
                   )}
                 </strong>
               </div>
@@ -301,7 +266,7 @@ export default function BountyDetailPage({
                   <span className="meta-label">Release tx</span>
                   <strong className="copy-row">
                     {bounty.releasedTxHash}
-                    <CopyButton text={bounty.releasedTxHash} label="release transaction hash" />
+                    <CopyIcon text={bounty.releasedTxHash} label="release transaction hash" />
                   </strong>
                 </div>
               )}
@@ -310,7 +275,7 @@ export default function BountyDetailPage({
                   <span className="meta-label">Refund tx</span>
                   <strong className="copy-row">
                     {bounty.refundedTxHash}
-                    <CopyButton text={bounty.refundedTxHash} label="refund transaction hash" />
+                    <CopyIcon text={bounty.refundedTxHash} label="refund transaction hash" />
                   </strong>
                 </div>
               )}
