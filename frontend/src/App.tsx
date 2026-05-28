@@ -1,4 +1,4 @@
-import { FormEvent, ReactNode, memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { FormEvent, ReactNode, Suspense, lazy, memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowUpRight,
   Coins,
@@ -39,14 +39,18 @@ import SubmissionChecklistModal, { type SubmissionFormData } from "./SubmissionC
 import { BountyRecommendation, ContributorProfile, createDefaultProfile, generateRecommendations, updateProfileFromBounties } from "./recommendations";
 import RecommendedBounties from "./RecommendedBounties";
 import { statusCopy, actionCopy, readInitialFilters, FilterState, statusOptions, statusGlossary, sortOptions } from "./constants";
-import { filterBounties, getRewardBounds, getActiveRewardLabel, getContributorMetrics, getUniqueRepos, getRepoMetrics, sortBounties, debounce, SortOption, SortState, xlmToUsd } from "./utils";
+import { filterBounties, getRewardBounds, getActiveRewardLabel, getContributorMetrics, getUniqueRepos, getUniqueTokenSymbols, getRepoMetrics, sortBounties, debounce, SortOption, SortState, xlmToUsd } from "./utils";
 import { Bounty, CreateBountyPayload, OpenIssue, BountyStatus } from "./types";
 
 import GitHubIssuePreviewCard from "./GitHubIssuePreviewCard";
-import BountyDetailPage from "./BountyDetailPage";
 import UsdAmount from "./UsdAmount";
 
 import SkeletonBountyCard from "./SkeletonBountyCard";
+import EmptyState from "./EmptyState";
+
+// Lazy-load BountyDetailPage — it is only rendered on /bounties/:id routes,
+// so deferring it keeps the initial board bundle smaller.
+const BountyDetailPage = lazy(() => import("./BountyDetailPage"));
 
 const STELLAR_PUBLIC_KEY_HINT = "Expected Stellar public key (starts with G and is 56 characters).";
 const STELLAR_PUBLIC_KEY_REGEX = /^G[A-Z2-7]{55}$/;
@@ -322,6 +326,7 @@ function App() {
   const [minReward, setMinReward] = useState(initialFilters.minReward);
   const [maxReward, setMaxReward] = useState(initialFilters.maxReward);
   const [repoFilter, setRepoFilter] = useState(initialFilters.repoFilter);
+  const [tokenFilter, setTokenFilter] = useState(initialFilters.tokenFilter);
   const [sortOption, setSortOption] = useState(initialFilters.sortOption);
   const [sortDirection, setSortDirection] = useState(initialFilters.sortDirection);
   const [pathname, setPathname] = useState(window.location.pathname);
@@ -421,6 +426,10 @@ function App() {
       params.set("repo", repoFilter);
     }
 
+    if (tokenFilter !== "") {
+      params.set("tokenSymbol", tokenFilter);
+    }
+
     if (sortOption !== "newest") {
       params.set("sort", sortOption);
     }
@@ -432,7 +441,7 @@ function App() {
     const nextSearch = params.toString();
     const nextUrl = `${window.location.pathname}${nextSearch ? `?${nextSearch}` : ""}${window.location.hash}`;
     window.history.replaceState(null, "", nextUrl);
-  }, [maxReward, minReward, pathname, debouncedSearchQuery, statusFilter, repoFilter, sortOption, sortDirection]);
+  }, [maxReward, minReward, pathname, debouncedSearchQuery, statusFilter, repoFilter, tokenFilter, sortOption, sortDirection]);
 
   useEffect(() => {
     function handlePopState() {
@@ -446,6 +455,7 @@ function App() {
       setMinReward(filters.minReward);
       setMaxReward(filters.maxReward);
       setRepoFilter(filters.repoFilter);
+      setTokenFilter(filters.tokenFilter);
       setSortOption(filters.sortOption);
       setSortDirection(filters.sortDirection);
     }
@@ -476,6 +486,10 @@ function App() {
     return getUniqueRepos(bounties);
   }, [bounties]);
 
+  const uniqueTokens = useMemo(() => {
+    return getUniqueTokenSymbols(bounties);
+  }, [bounties]);
+
   const rewardBounds = useMemo(() => {
     return getRewardBounds(bounties);
   }, [bounties]);
@@ -499,6 +513,7 @@ function App() {
     setMinReward("");
     setMaxReward("");
     setRepoFilter("");
+    setTokenFilter("");
     setSortOption("newest");
     setSortDirection("desc");
   }
@@ -624,13 +639,14 @@ function App() {
       minReward,
       maxReward,
       repoFilter: effectiveRepoFilter,
+      tokenFilter,
       sortOption,
       sortDirection,
     });
 
     // Apply sorting
     return sortBounties(filtered, { option: sortOption, direction: sortDirection });
-  }, [bounties, debouncedSearchQuery, statusFilter, minReward, maxReward, repoFilter, repoRoute, sortOption, sortDirection]);
+  }, [bounties, debouncedSearchQuery, statusFilter, minReward, maxReward, repoFilter, tokenFilter, repoRoute, sortOption, sortDirection]);
 
   const groupedBounties = useMemo(() => {
     if (repoRoute) {
@@ -646,23 +662,88 @@ function App() {
     return groups;
   }, [filteredBounties, repoRoute]);
 
+  // Derive whether any filter is currently active so EmptyState knows whether
+  // to show the "Clear filters" CTA.
+  const hasActiveFilters =
+    debouncedSearchQuery.trim() !== "" ||
+    statusFilter !== "all" ||
+    minReward !== "" ||
+    maxReward !== "" ||
+    repoFilter !== "";
+
+  // Build a context-aware heading and supporting message for the empty board.
+  const { emptyStateHeading, emptyStateMessage } = useMemo((): {
+    emptyStateHeading: string;
+    emptyStateMessage: string;
+  } => {
+    // Token search: user typed something like "XLM" or "USDC"
+    const tokenMatch = debouncedSearchQuery.trim().match(/^[A-Z]{2,6}$/);
+    if (tokenMatch) {
+      return {
+        emptyStateHeading: `No ${tokenMatch[0]} bounties`,
+        emptyStateMessage: `There are no bounties denominated in ${tokenMatch[0]} right now.`,
+      };
+    }
+
+    // Status filter active
+    if (statusFilter !== "all") {
+      const label = statusFilter.charAt(0).toUpperCase() + statusFilter.slice(1);
+      return {
+        emptyStateHeading: `No ${label.toLowerCase()} bounties`,
+        emptyStateMessage: `There are no bounties with status "${label.toLowerCase()}" matching your current filters.`,
+      };
+    }
+
+    // Repo filter active
+    if (repoFilter) {
+      return {
+        emptyStateHeading: "No bounties in this repo",
+        emptyStateMessage: `No bounties found for repository "${repoFilter}".`,
+      };
+    }
+
+    // Generic search query
+    if (debouncedSearchQuery.trim()) {
+      return {
+        emptyStateHeading: `No bounties found for "${debouncedSearchQuery.trim()}"`,
+        emptyStateMessage: "Try a different search term or clear your filters.",
+      };
+    }
+
+    // Reward range filter only
+    if (minReward || maxReward) {
+      return {
+        emptyStateHeading: "No bounties in this reward range",
+        emptyStateMessage: "Try widening the min/max reward range.",
+      };
+    }
+
+    // No filters at all — board is genuinely empty
+    return {
+      emptyStateHeading: "No bounties yet",
+      emptyStateMessage: "Be the first to create a bounty using the form above.",
+    };
+  }, [debouncedSearchQuery, statusFilter, repoFilter, minReward, maxReward]);
+
   if (detailId) {
     const bounty = detailBounty;
     const owner = bounty ? repoOwner(bounty.repo) : "";
     const avatarUrl = bounty ? `https://github.com/${owner}.png?size=72` : "";
 
     return (
-      <BountyDetailPage
-        bounty={bounty}
-        loading={detailLoading}
-        onBack={() => navigate("/")}
-        owner={owner}
-        avatarUrl={avatarUrl}
-        statusCopy={statusCopy}
-        actionCopy={actionCopy}
-        renderActionButton={renderActionButton}
-        formatTimestamp={formatTimestamp}
-      />
+      <Suspense fallback={<div className="empty-state">Loading bounty...</div>}>
+        <BountyDetailPage
+          bounty={bounty}
+          loading={detailLoading}
+          onBack={() => navigate("/")}
+          owner={owner}
+          avatarUrl={avatarUrl}
+          statusCopy={statusCopy}
+          actionCopy={actionCopy}
+          renderActionButton={renderActionButton}
+          formatTimestamp={formatTimestamp}
+        />
+      </Suspense>
     );
   }
 
@@ -1075,6 +1156,25 @@ function App() {
                   </label>
 
                   <label className="filter-field">
+                    <span>Token</span>
+                    <div className="input-with-icon">
+                      <Coins size={16} />
+                      <select
+                        aria-label="Filter by token"
+                        value={tokenFilter}
+                        onChange={(event) => setTokenFilter(event.target.value)}
+                      >
+                        <option value="">All Tokens</option>
+                        {uniqueTokens.map((token) => (
+                          <option key={token} value={token}>
+                            {token}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </label>
+
+                  <label className="filter-field">
                     <span>Min reward</span>
                     <input
                       type="number"
@@ -1292,28 +1392,12 @@ function App() {
                   ))}
                 </div>
               ) : (
-                <div className="empty-state">
-                  <div className="empty-state__content">
-                    <h3>No bounties found</h3>
-                    <p>
-                      {debouncedSearchQuery && (
-                        <>No bounties match "<strong>{debouncedSearchQuery}</strong>"</>
-                      ) || statusFilter !== "all" || minReward || maxReward || repoFilter ? (
-                        <>No bounties match the current filters</>
-                      ) : (
-                        <>No bounties available yet</>
-                      )}
-                    </p>
-                    <div className="empty-state__suggestions">
-                      <p><strong>Suggestions:</strong></p>
-                      <ul>
-                        <li>Try adjusting your search terms or filters</li>
-                        <li>Check back later for new bounties</li>
-                        <li>Browse all repositories to see available opportunities</li>
-                      </ul>
-                    </div>
-                  </div>
-                </div>
+                <EmptyState
+                  heading={emptyStateHeading}
+                  message={emptyStateMessage}
+                  hasFilters={hasActiveFilters}
+                  onClearFilters={clearFilters}
+                />
               )}
             </section>
           </main>
