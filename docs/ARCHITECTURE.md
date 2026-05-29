@@ -168,6 +168,39 @@ Soroban contract implementing on-chain escrow logic for trustless bounty payouts
   ─────────────────────────────────────────────────────────────────────────────
 ```
 
+### BountyStatus State Machine (Mermaid)
+
+```mermaid
+stateDiagram-v2
+    [*] --> Open : create_bounty
+    
+    Open --> Reserved : reserve_bounty
+    Open --> Expired : expire_if_needed
+    Open --> Refunded : refund_bounty
+    
+    Reserved --> Submitted : submit_bounty
+    Reserved --> Expired : expire_if_needed
+    Reserved --> Refunded : refund_bounty
+    
+    Submitted --> Released : release_bounty
+    Submitted --> Disputed : dispute_bounty
+    Submitted --> Refunded : refund_bounty
+    
+    Disputed --> Released : resolve_dispute(release=true)
+    Disputed --> Refunded : resolve_dispute(release=false)
+    Disputed --> Refunded : refund_bounty
+    
+    Expired --> Refunded : refund_bounty
+    
+    note right of Released
+        Invalid transitions explicitly excluded:
+        - Released -> Refunded (Terminal state)
+        - Refunded -> Released (Terminal state)
+        - Submitted -> Open (Cannot un-submit)
+        - Expired -> Open (Cannot revert expiration)
+    end note
+```
+
 ## Interaction Sequence Diagrams
 
 The following Mermaid diagrams show the detailed sequence of interactions for each bounty lifecycle action.
