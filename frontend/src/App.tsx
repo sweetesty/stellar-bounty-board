@@ -56,7 +56,7 @@ const BountyDetailPage = lazy(() => import("./BountyDetailPage"));
 const STELLAR_PUBLIC_KEY_HINT = "Expected Stellar public key (starts with G and is 56 characters).";
 const STELLAR_PUBLIC_KEY_REGEX = /^G[A-Z2-7]{55}$/;
 
-const DARK_MODE_KEY = "stellar-bounty-board:theme";
+const DARK_MODE_KEY = "stellar-bounty-board-theme";
 
 function useDarkMode() {
   const [dark, setDark] = useState<boolean>(() => {
@@ -921,6 +921,15 @@ function App() {
                   onClick={() => void handleExportReleasedPayouts()}
                 >
                   {exporting ? "Exporting..." : "Export released payouts (CSV)"}
+                </button>
+                <button
+                  type="button"
+                  className="secondary-link"
+                  onClick={toggleDark}
+                  aria-label={dark ? "Switch to light mode" : "Switch to dark mode"}
+                  title={dark ? "Switch to light mode" : "Switch to dark mode"}
+                >
+                  {dark ? <Sun size={16} /> : <Moon size={16} />}
                 </button>
               </div>
             </div>
