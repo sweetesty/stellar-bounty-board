@@ -42,6 +42,12 @@ Contract (`contracts`)
 - Soroban Rust contract scaffold
 - Escrow-style bounty lifecycle methods
 
+## Architecture
+
+See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for system architecture, data ownership, and deployment diagrams.
+
+The [bounty lifecycle sequence diagram](docs/ARCHITECTURE.md#bounty-lifecycle-sequence) shows the create, reserve, submit, release, refund, dispute, and resolution flows across Maintainer, Contributor, Arbiter, Backend, and Contract actors.
+
 ## Deployment Guide
 
 See [docs/deployment.md](docs/deployment.md) for step-by-step instructions to deploy the backend on Render and the frontend on Vercel, including required environment variables, health check paths, and troubleshooting tips.
