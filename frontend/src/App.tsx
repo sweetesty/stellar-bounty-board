@@ -34,7 +34,10 @@ import {
   releaseBounty,
   reserveBounty,
   submitBounty,
+  getMaintainerMetrics,
 } from "./api";
+import MaintainerAnalyticsPage from "./MaintainerAnalyticsPage";
+import { MaintainerMetrics } from "./types";
 import SubmissionChecklistModal, { type SubmissionFormData } from "./SubmissionChecklistModal";
 import { BountyRecommendation, ContributorProfile, createDefaultProfile, generateRecommendations, updateProfileFromBounties } from "./recommendations";
 import RecommendedBounties from "./RecommendedBounties";
@@ -342,6 +345,46 @@ function App() {
   const [profileContributor, setProfileContributor] = useState("");
   const [profileStatus, setProfileStatus] = useState<"all" | BountyStatus>("all");
 
+  const [connectedWallet, setConnectedWallet] = useState<string>(() => {
+    try {
+      return localStorage.getItem("stellar-bounty-board-wallet") || "";
+    } catch {
+      return "";
+    }
+  });
+  const [maintainerMetrics, setMaintainerMetrics] = useState<MaintainerMetrics | null>(null);
+  const [maintainerMetricsLoading, setMaintainerMetricsLoading] = useState(false);
+
+  const maintainerAddress = useMemo(() => {
+    const match = pathname.match(/^\/maintainer\/([^/]+)$/);
+    return match ? decodeURIComponent(match[1] ?? "") : null;
+  }, [pathname]);
+
+  useEffect(() => {
+    if (!maintainerAddress) {
+      setMaintainerMetrics(null);
+      return;
+    }
+    let active = true;
+    setMaintainerMetricsLoading(true);
+    getMaintainerMetrics(maintainerAddress)
+      .then((data) => {
+        if (active) {
+          setMaintainerMetrics(data);
+          setMaintainerMetricsLoading(false);
+        }
+      })
+      .catch(() => {
+        if (active) {
+          setMaintainerMetrics(null);
+          setMaintainerMetricsLoading(false);
+        }
+      });
+    return () => {
+      active = false;
+    };
+  }, [maintainerAddress]);
+
   // Submission checklist modal state
   const [submissionModalBounty, setSubmissionModalBounty] = useState<Bounty | null>(null);
   const [submissionModalSubmitting, setSubmissionModalSubmitting] = useState(false);
@@ -405,7 +448,7 @@ function App() {
   }, []);
 
   useEffect(() => {
-    if (pathname.startsWith("/bounties/") || pathname.startsWith("/repo/")) return;
+    if (pathname.startsWith("/bounties/") || pathname.startsWith("/repo/") || pathname.startsWith("/maintainer/")) return;
     const params = new URLSearchParams();
 
     if (debouncedSearchQuery.trim() !== "") {
@@ -450,7 +493,7 @@ function App() {
       const nextPathname = window.location.pathname;
       setPathname(nextPathname);
 
-      if (nextPathname.startsWith("/bounties/") || nextPathname.startsWith("/repo/")) return;
+      if (nextPathname.startsWith("/bounties/") || nextPathname.startsWith("/repo/") || nextPathname.startsWith("/maintainer/")) return;
       const filters = readInitialFilters();
       setSearchQuery(filters.searchQuery);
       setStatusFilter(filters.statusFilter);
@@ -800,6 +843,49 @@ function App() {
     );
   }
 
+  if (maintainerAddress) {
+    return (
+      <div className="page-shell">
+        <div className="glow glow-left" />
+        <div className="glow glow-right" />
+        
+        <nav className="header-nav" aria-label="Main Navigation">
+          <div className="nav-logo" onClick={() => navigate("/")} role="link" tabIndex={0}>
+            <Rocket size={18} />
+            <span>Stellar Bounty Board</span>
+          </div>
+          <div className="nav-links">
+            {connectedWallet && (
+              <button 
+                className="nav-link-btn" 
+                onClick={() => navigate(`/maintainer/${connectedWallet}`)}
+              >
+                Analytics Dashboard
+              </button>
+            )}
+            <button 
+              className="connect-wallet-btn"
+              onClick={handleConnectWallet}
+            >
+              {connectedWallet ? shortAddress(connectedWallet) : "Connect Wallet"}
+            </button>
+          </div>
+        </nav>
+
+        {maintainerMetricsLoading || !maintainerMetrics ? (
+          <div className="empty-state">Loading metrics...</div>
+        ) : (
+          <MaintainerAnalyticsPage
+            metrics={maintainerMetrics}
+            maintainerAddress={maintainerAddress}
+            bounties={bounties}
+            onBack={() => navigate("/")}
+          />
+        )}
+      </div>
+    );
+  }
+
   async function handleReserve(bounty: Bounty) {
     const contributor = window.prompt("Contributor Stellar address", bounty.contributor ?? "");
     if (!contributor) return;
@@ -893,10 +979,62 @@ function App() {
       }
   }                      
 
+  function handleConnectWallet() {
+    if (connectedWallet) {
+      if (window.confirm("Do you want to disconnect your wallet?")) {
+        setConnectedWallet("");
+        try {
+          localStorage.removeItem("stellar-bounty-board-wallet");
+        } catch {
+          // ignore
+        }
+        toast.success("Wallet disconnected");
+      }
+      return;
+    }
+    const address = window.prompt("Enter Stellar public key to connect wallet:", "GB5IWBA6RTXMZSCMHFSVNL6IIZMHH5WJOH7JXZ2UTZD3VP2WBVWJJOOK");
+    if (!address) return;
+    const err = validateStellarPublicKey(address);
+    if (err) {
+      window.alert(err);
+      return;
+    }
+    setConnectedWallet(address.trim());
+    try {
+      localStorage.setItem("stellar-bounty-board-wallet", address.trim());
+    } catch {
+      // ignore
+    }
+    toast.success("Wallet connected successfully!");
+  }
+
   return (               
     <div className="page-shell">
           <div className="glow glow-left" />
           <div className="glow glow-right" />
+
+          <nav className="header-nav" aria-label="Main Navigation">
+            <div className="nav-logo" onClick={() => navigate("/")} role="link" tabIndex={0}>
+              <Rocket size={18} />
+              <span>Stellar Bounty Board</span>
+            </div>
+            <div className="nav-links">
+              {connectedWallet && (
+                <button 
+                  className="nav-link-btn" 
+                  onClick={() => navigate(`/maintainer/${connectedWallet}`)}
+                >
+                  Analytics Dashboard
+                </button>
+              )}
+              <button 
+                className="connect-wallet-btn"
+                onClick={handleConnectWallet}
+              >
+                {connectedWallet ? shortAddress(connectedWallet) : "Connect Wallet"}
+              </button>
+            </div>
+          </nav>
 
           <header className="hero">
             <div className="hero-copy">
