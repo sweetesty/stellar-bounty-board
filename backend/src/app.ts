@@ -5,6 +5,7 @@ import { randomUUID } from "node:crypto";
 import swaggerUi from "swagger-ui-express";
 import { buildCorsOptions } from "./middleware/corsOptions";
 import { generateOpenApiDocument } from "./docs/openapi";
+import { getMetrics, httpRequestDuration } from "./metrics";
 
 import {
   createBounty,
@@ -63,6 +64,18 @@ function requestContextMiddleware(req: Request, res: Response, next: NextFunctio
   res.on("finish", () => {
     const durationNs = process.hrtime.bigint() - start;
     const durationMs = Number(durationNs) / 1e6;
+    const durationSec = durationMs / 1000;
+    
+    // Record HTTP request duration for Prometheus
+    httpRequestDuration.observe(
+      {
+        method: req.method,
+        route: req.route?.path || req.path,
+        status_code: res.statusCode,
+      },
+      durationSec
+    );
+    
     logStructured("info", "http_request", {
       requestId,
       method: req.method,
@@ -440,13 +453,14 @@ app.get("/api/maintainers/:maintainer/metrics", (req: Request, res: Response) =>
   }
 });
 
-app.get("/api/metrics", (_req: Request, res: Response) => {
+// Prometheus metrics endpoint (issue #362) - excluded from rate limiting and auth
+app.get("/api/metrics", async (_req: Request, res: Response) => {
   try {
-    const metrics = getGlobalMetrics();
-    res.json({ data: metrics });
+    res.set("Content-Type", "text/plain; version=0.0.4; charset=utf-8");
+    const metrics = await getMetrics();
+    res.send(metrics);
   } catch (error) {
-
-
+    res.status(500).send("Error generating metrics");
   }
 });
 
