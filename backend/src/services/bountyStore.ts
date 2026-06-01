@@ -1,6 +1,9 @@
 import fs from "node:fs";
 import path from "node:path";
 import { sendNotification, type NotificationRecipient } from "./notificationService";
+import { logStructured } from "../logger";
+import { getCache, type CacheAdapter } from "./cache";
+import { bountiesCreatedTotal, bountiesReleasedTotal } from "../metrics";
 
 export type BountyStatus =
   | "open"
@@ -253,7 +256,7 @@ function normalizeRecords(records: BountyRecord[]): BountyRecord[] {
 
   const next = records.map((record) => {
     // Ensure events array exists (for backward compatibility)
-    const events = record.events || [{ type: "created" as const, timestamp: record.createdAt }];
+    const events: BountyEvent[] = record.events || [{ type: "created" as const, timestamp: record.createdAt }];
 
     // Check for expired deadline
     if ((record.status === "open" || record.status === "reserved") && now > record.deadlineAt) {
@@ -275,7 +278,7 @@ function normalizeRecords(records: BountyRecord[]): BountyRecord[] {
         status: "expired" as const,
         events: [
           ...events,
-          { type: "expired", timestamp: now },
+          { type: "expired" as const, timestamp: now },
         ],
       };
     }
@@ -295,7 +298,7 @@ function normalizeRecords(records: BountyRecord[]): BountyRecord[] {
         reservedAt: undefined,
         events: [
           ...events,
-          { type: "expired", timestamp: now, details: { reason: "reservation_timeout" } },
+          { type: "expired" as const, timestamp: now, details: { reason: "reservation_timeout" } },
         ],
       };
     }
@@ -365,6 +368,47 @@ export function listBounties(options: ListBountiesOptions = {}): BountyRecord[] 
   return sorted;
 }
 
+// ── Cached list for the public board (#361) ──────────────────────────────────
+
+const BOUNTY_LIST_CACHE_KEY = "bounties:list";
+const BOUNTY_LIST_TTL_SECONDS = 5;
+
+/**
+ * Cache-backed variant of {@link listBounties} for the hot `/api/bounties` read
+ * path. The full normalized+sorted list is cached (5s TTL) so it is shared
+ * across replicas via Redis; the cheap `q` filter is applied to the cached list
+ * per request. Writes call {@link invalidateBountyCache}.
+ */
+export async function listBountiesCached(
+  options: ListBountiesOptions = {},
+  cache: CacheAdapter = getCache(),
+): Promise<BountyRecord[]> {
+  let records: BountyRecord[];
+  const cached = await cache.get(BOUNTY_LIST_CACHE_KEY);
+  if (cached) {
+    records = JSON.parse(cached) as BountyRecord[];
+  } else {
+    records = listBounties();
+    await cache.set(BOUNTY_LIST_CACHE_KEY, JSON.stringify(records), BOUNTY_LIST_TTL_SECONDS);
+  }
+
+  const q = options.q?.trim().toLowerCase();
+  if (!q) {
+    return records;
+  }
+  return records.filter(
+    (b) =>
+      b.title.toLowerCase().includes(q) ||
+      b.summary.toLowerCase().includes(q) ||
+      b.labels.some((l) => l.toLowerCase().includes(q)),
+  );
+}
+
+/** Drop the cached bounty list so the next read reflects a mutation (#361). */
+export async function invalidateBountyCache(cache: CacheAdapter = getCache()): Promise<void> {
+  await cache.del(BOUNTY_LIST_CACHE_KEY);
+}
+
 let globalLock: Promise<void> = Promise.resolve();
 
 async function withGlobalLock<T>(fn: () => T | Promise<T>): Promise<T> {
@@ -382,7 +426,7 @@ async function withGlobalLock<T>(fn: () => T | Promise<T>): Promise<T> {
 }
 
 export async function createBounty(input: CreateBountyInput): Promise<BountyRecord> {
-  return withGlobalLock(() => {
+  return withGlobalLock(async () => {
     const records = listBounties();
     const createdAt = nowInSeconds();
     const bounty: BountyRecord = {
@@ -404,6 +448,10 @@ export async function createBounty(input: CreateBountyInput): Promise<BountyReco
     };
 
     writeStore([bounty, ...records]);
+    await invalidateBountyCache();
+    
+    // Increment Prometheus counter for bounty creation
+    bountiesCreatedTotal.inc();
 
     // Trigger notification on create
     const recipients: NotificationRecipient[] = [{ role: "maintainer", address: input.maintainer }];
@@ -425,7 +473,7 @@ export async function createBounty(input: CreateBountyInput): Promise<BountyReco
 }
 
 export async function reserveBounty(id: string, contributor: string, expectedVersion?: number): Promise<BountyRecord> {
-  return withGlobalLock(() => {
+  return withGlobalLock(async () => {
     const records = listBounties();
     const bounty = findBounty(records, id);
 
@@ -458,6 +506,7 @@ export async function reserveBounty(id: string, contributor: string, expectedVer
         actor: contributor,
       },
     ]);
+    await invalidateBountyCache();
     return persisted;
   });
 }
@@ -468,7 +517,7 @@ export async function submitBounty(
   submissionUrl: string,
   notes?: string,
 ): Promise<BountyRecord> {
-  return withGlobalLock(() => {
+  return withGlobalLock(async () => {
     const records = listBounties();
     const bounty = findBounty(records, id);
 
@@ -504,6 +553,7 @@ export async function submitBounty(
         },
       },
     ]);
+    await invalidateBountyCache();
     return persisted;
   });
 }
@@ -513,7 +563,7 @@ export async function releaseBounty(
   maintainer: string,
   transactionHash?: string,
 ): Promise<BountyRecord> {
-  return withGlobalLock(() => {
+  return withGlobalLock(async () => {
     const records = listBounties();
     const bounty = findBounty(records, id);
 
@@ -547,6 +597,11 @@ export async function releaseBounty(
         },
       },
     ]);
+    await invalidateBountyCache();
+    
+    // Increment Prometheus counter for bounty release
+    bountiesReleasedTotal.inc();
+    
     return persisted;
   });
 }
@@ -556,7 +611,7 @@ export async function refundBounty(
   maintainer: string,
   transactionHash?: string,
 ): Promise<BountyRecord> {
-  return withGlobalLock(() => {
+  return withGlobalLock(async () => {
     const records = listBounties();
     const bounty = findBounty(records, id);
 
@@ -593,6 +648,7 @@ export async function refundBounty(
         },
       },
     ]);
+    await invalidateBountyCache();
     return persisted;
   });
 }
@@ -706,4 +762,35 @@ export function getGlobalMetrics(): GlobalMetrics {
     uniqueMaintainers,
     uniqueContributors,
   };
+}
+
+
+export interface LeaderboardEntry {
+  address: string;
+  totalXlm: number;
+  bountiesCompleted: number;
+}
+
+export function getLeaderboard(limit = 10): LeaderboardEntry[] {
+  const entries = new Map<string, LeaderboardEntry>();
+
+  for (const bounty of listBounties()) {
+    if (bounty.status !== "released" || !bounty.contributor) {
+      continue;
+    }
+
+    const entry = entries.get(bounty.contributor) ?? {
+      address: bounty.contributor,
+      totalXlm: 0,
+      bountiesCompleted: 0,
+    };
+
+    entry.totalXlm += bounty.amount;
+    entry.bountiesCompleted += 1;
+    entries.set(bounty.contributor, entry);
+  }
+
+  return Array.from(entries.values())
+    .sort((a, b) => b.totalXlm - a.totalXlm || b.bountiesCompleted - a.bountiesCompleted)
+    .slice(0, limit);
 }

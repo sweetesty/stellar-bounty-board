@@ -1,51 +1,6 @@
 import { Bounty, BountyStatus } from "./types";
 import { FilterState } from "./constants";
 
-// ── XLM → USD conversion ────────────────────────────────────────────────
-
-const XLM_RATE_CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
-
-let _xlmUsdRate: number | null = null;
-let _xlmRateFetchedAt = 0;
-
-async function fetchXlmUsdRate(): Promise<number> {
-  const now = Date.now();
-  if (_xlmUsdRate !== null && now - _xlmRateFetchedAt < XLM_RATE_CACHE_TTL_MS) {
-    return _xlmUsdRate;
-  }
-
-  // CoinGecko simple price endpoint — no API key required for public use
-  const response = await fetch(
-    "https://api.coingecko.com/api/v3/simple/price?ids=stellar&vs_currencies=usd",
-    { signal: AbortSignal.timeout(8000) },
-  );
-
-  if (!response.ok) {
-    throw new Error(`CoinGecko request failed: HTTP ${response.status}`);
-  }
-
-  const data = (await response.json()) as { stellar?: { usd?: number } };
-  const rate = data?.stellar?.usd;
-
-  if (typeof rate !== "number" || rate <= 0) {
-    throw new Error("Unexpected CoinGecko response shape");
-  }
-
-  _xlmUsdRate = rate;
-  _xlmRateFetchedAt = now;
-  return rate;
-}
-
-/**
- * Convert an XLM amount to a USD string, e.g. "~$12.34".
- * Fetches the live XLM/USD rate from CoinGecko and caches it for 5 minutes.
- * Throws if the network request fails.
- */
-export async function xlmToUsd(amount: number): Promise<string> {
-  const rate = await fetchXlmUsdRate();
-  const usd = amount * rate;
-  return `~$${usd.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-}
 
 // Simple debounce function for search
 export function debounce<T extends (...args: any[]) => any>(
@@ -62,6 +17,16 @@ export function debounce<T extends (...args: any[]) => any>(
 export function getUniqueRepos(bounties: Bounty[]): string[] {
   const repos = new Set(bounties.map((bounty) => bounty.repo));
   return Array.from(repos).sort();
+}
+
+/** Distinct token symbols across the given bounties, sorted for a stable dropdown (#293). */
+export function getUniqueTokenSymbols(bounties: Bounty[]): string[] {
+  const tokens = new Set(
+    bounties
+      .map((bounty) => bounty.tokenSymbol?.trim().toUpperCase())
+      .filter((symbol): symbol is string => Boolean(symbol)),
+  );
+  return Array.from(tokens).sort();
 }
 
 export function getRepoMetrics(bounties: Bounty[], repo: string) {
@@ -95,6 +60,14 @@ export function filterBounties(bounties: Bounty[], filters: FilterState): Bounty
 
     // Repo filter
     if (filters.repoFilter.trim() !== "" && bounty.repo !== filters.repoFilter) {
+      return false;
+    }
+
+    // Token filter (AND with status/other filters) (#293)
+    if (
+      filters.tokenFilter.trim() !== "" &&
+      bounty.tokenSymbol?.toUpperCase() !== filters.tokenFilter.toUpperCase()
+    ) {
       return false;
     }
 
@@ -149,7 +122,7 @@ export function sortBounties(bounties: Bounty[], sort: SortState): Bounty[] {
     
     switch (sort.option) {
       case "reward-high":
-        comparison = b.amount - a.amount;
+        comparison = a.amount - b.amount;
         break;
       case "reward-low":
         comparison = a.amount - b.amount;
@@ -158,13 +131,13 @@ export function sortBounties(bounties: Bounty[], sort: SortState): Bounty[] {
         comparison = a.deadlineAt - b.deadlineAt;
         break;
       case "deadline-latest":
-        comparison = b.deadlineAt - a.deadlineAt;
+        comparison = a.deadlineAt - b.deadlineAt;
         break;
       case "newest":
-        comparison = b.createdAt - a.createdAt;
+        comparison = a.createdAt - b.createdAt;
         break;
       case "oldest":
-        comparison = b.createdAt - b.createdAt;
+        comparison = a.createdAt - b.createdAt;
         break;
     }
     
@@ -328,19 +301,4 @@ export async function getXlmRate(): Promise<number | null> {
   })();
 
   return pendingRequest;
-}
-
-/**
- * Converts an XLM amount to a formatted USD string (e.g. "$12.40").
- * Returns an empty string if the rate cannot be fetched.
- */
-export async function xlmToUsd(amount: number): Promise<string> {
-  const rate = await getXlmRate();
-  if (rate === null) return "";
-
-  const usdAmount = amount * rate;
-  return new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: "USD",
-  }).format(usdAmount);
 }
