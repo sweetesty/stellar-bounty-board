@@ -5,6 +5,7 @@ import { ArrowUpRight, Clock, Printer } from "lucide-react";
 import CopyIcon from "./CopyIcons";
 import UsdAmount from "./UsdAmount";
 import type { Bounty, BountyEvent, BountyStatus } from "./types";
+import { updateSocialMetaTags } from "./metaTags";
 
 type BountyAction = "reserve" | "submit" | "release" | "refund";
 
@@ -118,6 +119,31 @@ export default function BountyDetailPage({
   formatTimestamp,
 }: Props) {
   const statusAnnouncement = useBountyStatusAnnouncement(bounty, statusCopy);
+
+  // Update social meta tags when bounty data changes
+  useEffect(() => {
+    updateSocialMetaTags(bounty);
+
+    // Cleanup: reset meta tags when component unmounts
+    return () => {
+      updateSocialMetaTags(null);
+    };
+  }, [bounty]);
+
+  // Issue #373: inject canonical <link> so search engines index the stable URL
+  useEffect(() => {
+    if (!bounty) return;
+    let canonical = document.querySelector<HTMLLinkElement>("link[rel='canonical']");
+    if (!canonical) {
+      canonical = document.createElement("link");
+      canonical.rel = "canonical";
+      document.head.appendChild(canonical);
+    }
+    canonical.href = `${window.location.origin}/bounties/${bounty.id}`;
+    return () => {
+      if (canonical) canonical.href = "";
+    };
+  }, [bounty]);
 
   function handlePrint() {
     window.print();
@@ -265,7 +291,17 @@ export default function BountyDetailPage({
                 <div>
                   <span className="meta-label">Release tx</span>
                   <strong className="copy-row">
-                    {bounty.releasedTxHash}
+                    {/* Issue #382: clickable Stellar Expert deep link */}
+                    <a
+                      className="inline-link"
+                      href={`https://stellar.expert/explorer/testnet/tx/${bounty.releasedTxHash}`}
+                      target="_blank"
+                      rel="noreferrer"
+                      title="View on Stellar Expert"
+                    >
+                      {bounty.releasedTxHash.slice(0, 8)}…{bounty.releasedTxHash.slice(-6)}
+                      <ArrowUpRight size={12} aria-hidden="true" />
+                    </a>
                     <CopyIcon text={bounty.releasedTxHash} label="release transaction hash" />
                   </strong>
                 </div>
@@ -274,7 +310,17 @@ export default function BountyDetailPage({
                 <div>
                   <span className="meta-label">Refund tx</span>
                   <strong className="copy-row">
-                    {bounty.refundedTxHash}
+                    {/* Issue #382: clickable Stellar Expert deep link */}
+                    <a
+                      className="inline-link"
+                      href={`https://stellar.expert/explorer/testnet/tx/${bounty.refundedTxHash}`}
+                      target="_blank"
+                      rel="noreferrer"
+                      title="View on Stellar Expert"
+                    >
+                      {bounty.refundedTxHash.slice(0, 8)}…{bounty.refundedTxHash.slice(-6)}
+                      <ArrowUpRight size={12} aria-hidden="true" />
+                    </a>
                     <CopyIcon text={bounty.refundedTxHash} label="refund transaction hash" />
                   </strong>
                 </div>

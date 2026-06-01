@@ -1,3 +1,4 @@
+import compression from "compression";
 import cors from "cors";
 import express, { Request, Response, NextFunction } from "express";
 import { randomUUID } from "node:crypto";
@@ -9,6 +10,7 @@ import {
   createBounty,
   listBountyAuditLogs,
   listBounties,
+  listBountiesCached,
   refundBounty,
   releaseBounty,
   reserveBounty,
@@ -28,11 +30,12 @@ import {
   zodErrorMessage,
 } from "./validation/schemas";
 import { logStructured } from "./logger";
-import { limiter } from "./utils";
+import { readLimiter, mutationLimiter } from "./utils";
 import {
   captureRawBody,
   createGitHubWebhookSignatureMiddleware,
 } from "./webhooks/signatureVerification";
+import { createBountyCreationSignatureMiddleware, createStellarSignatureAuthMiddleware } from "./middleware/auth";
 import { handleGitHubPrEvent } from "./webhooks/githubPrHandler";
 
 const INCOMING_REQUEST_ID = /^[a-zA-Z0-9-]{1,128}$/;
@@ -74,6 +77,7 @@ function requestContextMiddleware(req: Request, res: Response, next: NextFunctio
 
 export const app = express();
 
+app.use(compression({ threshold: 1024 }));
 app.use(cors(buildCorsOptions()));
 
 // Parse JSON bodies; capture raw body for webhook signature verification
@@ -83,6 +87,9 @@ app.use(
   }),
 );
 app.use(requestContextMiddleware);
+
+// Global read limit (GET only); mutation routes carry a stricter limit (#349).
+app.use(readLimiter);
 
 const swaggerDoc = generateOpenApiDocument();
 app.use("/api/docs", swaggerUi.serve, swaggerUi.setup(swaggerDoc));
@@ -138,6 +145,56 @@ function sendError(res: Response, req: Request, error: unknown, statusCode = 400
   jsonError(res, req, statusCode, message);
 }
 
+// ─── SEO: robots.txt (issue #373) ────────────────────────────────────────────
+// Allow all user agents to crawl bounty pages; disallow admin/internal paths.
+app.get("/robots.txt", (_req: Request, res: Response) => {
+  const FRONTEND_URL = process.env.FRONTEND_URL ?? "https://stellar-bounty-board.vercel.app";
+  res.type("text/plain").send(
+    [
+      "User-agent: *",
+      "Allow: /",
+      "Disallow: /api/",
+      "Disallow: /admin/",
+      "",
+      `Sitemap: ${FRONTEND_URL}/sitemap.xml`,
+    ].join("\n")
+  );
+});
+
+// ─── SEO: dynamic sitemap.xml (issue #373) ───────────────────────────────────
+// Lists every released/open bounty with its canonical URL so search engines
+// can efficiently discover and index individual bounty pages.
+app.get("/sitemap.xml", (_req: Request, res: Response) => {
+  const FRONTEND_URL = process.env.FRONTEND_URL ?? "https://stellar-bounty-board.vercel.app";
+  const allBounties = listBounties();
+  const indexable = allBounties.filter(
+    (b) => b.status === "open" || b.status === "released"
+  );
+
+  const urlset = indexable
+    .map((b) => {
+      const lastmod = b.releasedAt ?? b.createdAt ?? new Date().toISOString();
+      return [
+        "  <url>",
+        `    <loc>${FRONTEND_URL}/bounties/${b.id}</loc>`,
+        `    <lastmod>${new Date(lastmod).toISOString().split("T")[0]}</lastmod>`,
+        "    <changefreq>weekly</changefreq>",
+        "    <priority>0.7</priority>",
+        "  </url>",
+      ].join("\n");
+    })
+    .join("\n");
+
+  const xml = [
+    '<?xml version="1.0" encoding="UTF-8"?>',
+    '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">',
+    urlset,
+    "</urlset>",
+  ].join("\n");
+
+  res.type("application/xml").send(xml);
+});
+
 app.get("/api/health", (_req: Request, res: Response) => {
   res.json({
     service: "stellar-bounty-board-backend",
@@ -154,9 +211,9 @@ app.get("/worker/health", (_req: Request, res: Response) => {
   });
 });
 
-app.get("/api/bounties", (req: Request, res: Response) => {
+app.get("/api/bounties", async (req: Request, res: Response) => {
   const q = typeof req.query.q === "string" ? req.query.q : undefined;
-  res.json({ data: listBounties({ q }) });
+  res.json({ data: await listBountiesCached({ q }) });
 });
 
 app.get("/api/leaderboard", (_req: Request, res: Response) => {
@@ -231,7 +288,7 @@ app.get("/api/bounties/released/export.csv", (req: Request, res: Response) => {
   }
 });
 
-app.post("/api/bounties", limiter, async (req: Request, res: Response) => {
+app.post("/api/bounties", mutationLimiter, createBountyCreationSignatureMiddleware(), async (req: Request, res: Response) => {
   const parsed = createBountySchema.safeParse(req.body);
   if (!parsed.success) {
     jsonError(res, req, 400, zodErrorMessage(parsed.error));
@@ -246,7 +303,7 @@ app.post("/api/bounties", limiter, async (req: Request, res: Response) => {
   }
 });
 
-app.post("/api/bounties/:id/reserve", limiter, async (req: Request, res: Response) => {
+app.post("/api/bounties/:id/reserve", mutationLimiter, async (req: Request, res: Response) => {
   const parsedBody = reserveBountySchema.safeParse(req.body);
   if (!parsedBody.success) {
     jsonError(res, req, 400, zodErrorMessage(parsedBody.error));
@@ -261,7 +318,7 @@ app.post("/api/bounties/:id/reserve", limiter, async (req: Request, res: Respons
   }
 });
 
-app.post("/api/bounties/:id/submit", limiter, async (req: Request, res: Response) => {
+app.post("/api/bounties/:id/submit", mutationLimiter, async (req: Request, res: Response) => {
   const parsedBody = submitBountySchema.safeParse(req.body);
   if (!parsedBody.success) {
     jsonError(res, req, 400, zodErrorMessage(parsedBody.error));
@@ -281,7 +338,7 @@ app.post("/api/bounties/:id/submit", limiter, async (req: Request, res: Response
   }
 });
 
-app.post("/api/bounties/:id/release", limiter, async (req: Request, res: Response) => {
+app.post("/api/bounties/:id/release", mutationLimiter, createStellarSignatureAuthMiddleware(), async (req: Request, res: Response) => {
   const parsedBody = maintainerActionSchema.safeParse(req.body);
   if (!parsedBody.success) {
     jsonError(res, req, 400, zodErrorMessage(parsedBody.error));
@@ -300,7 +357,7 @@ app.post("/api/bounties/:id/release", limiter, async (req: Request, res: Respons
   }
 });
 
-app.post("/api/bounties/:id/refund", limiter, async (req: Request, res: Response) => {
+app.post("/api/bounties/:id/refund", mutationLimiter, createStellarSignatureAuthMiddleware(), async (req: Request, res: Response) => {
   const parsedBody = maintainerActionSchema.safeParse(req.body);
   if (!parsedBody.success) {
     jsonError(res, req, 400, zodErrorMessage(parsedBody.error));
