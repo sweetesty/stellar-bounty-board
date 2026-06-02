@@ -65,6 +65,45 @@ export default function SubmissionChecklistModal({
     onClose();
   }
 
+  function handleDialogKeyDown(e: React.KeyboardEvent<HTMLDialogElement>) {
+    if (e.key === "Escape") {
+      e.preventDefault();
+      onClose();
+      return;
+    }
+
+    if (e.key !== "Tab") return;
+
+    const dialog = dialogRef.current;
+    if (!dialog) return;
+
+    const focusable = Array.from(
+      dialog.querySelectorAll<HTMLElement>(
+        'a[href], button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex]:not([tabindex="-1"])',
+      ),
+    );
+
+    if (focusable.length === 0) {
+      e.preventDefault();
+      dialog.focus();
+      return;
+    }
+
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+
+    if (e.shiftKey && document.activeElement === first) {
+      e.preventDefault();
+      last.focus();
+      return;
+    }
+
+    if (!e.shiftKey && document.activeElement === last) {
+      e.preventDefault();
+      first.focus();
+    }
+  }
+
   const contributorError =
     touched.contributor && contributor.trim() && !STELLAR_PUBLIC_KEY_REGEX.test(contributor.trim())
       ? "Enter a Stellar public key (starts with 'G', 56 characters)"
@@ -102,6 +141,7 @@ export default function SubmissionChecklistModal({
       className="submission-modal"
       onClick={handleDialogClick}
       onCancel={handleCancel}
+      onKeyDown={handleDialogKeyDown}
       aria-labelledby="modal-title"
       aria-modal="true"
     >
