@@ -77,31 +77,28 @@ export default function SubmissionChecklistModal({
     const dialog = dialogRef.current;
     if (!dialog) return;
 
-    const focusable = Array.from(
-      dialog.querySelectorAll<HTMLElement>(
-        'a[href], button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex]:not([tabindex="-1"])',
-      ),
-    );
+    const orderedFocusable = [
+      firstInputRef.current,
+      dialog.querySelector<HTMLElement>('input[type="url"]:not(:disabled)'),
+      dialog.querySelector<HTMLElement>('.checklist-item__toggle:not(:disabled)'),
+      dialog.querySelector<HTMLElement>('textarea:not(:disabled)'),
+      ...Array.from(dialog.querySelectorAll<HTMLElement>('.submission-modal__actions button:not(:disabled)')),
+      dialog.querySelector<HTMLElement>('.modal-close-btn:not(:disabled)'),
+    ].filter((element): element is HTMLElement => Boolean(element));
 
-    if (focusable.length === 0) {
+    if (orderedFocusable.length === 0) {
       e.preventDefault();
       dialog.focus();
       return;
     }
 
-    const first = focusable[0];
-    const last = focusable[focusable.length - 1];
+    const currentIndex = orderedFocusable.findIndex((element) => element === document.activeElement);
+    const nextIndex = e.shiftKey
+      ? (currentIndex <= 0 ? orderedFocusable.length - 1 : currentIndex - 1)
+      : (currentIndex === -1 || currentIndex === orderedFocusable.length - 1 ? 0 : currentIndex + 1);
 
-    if (e.shiftKey && document.activeElement === first) {
-      e.preventDefault();
-      last.focus();
-      return;
-    }
-
-    if (!e.shiftKey && document.activeElement === last) {
-      e.preventDefault();
-      first.focus();
-    }
+    e.preventDefault();
+    orderedFocusable[nextIndex].focus();
   }
 
   const contributorError =
@@ -151,15 +148,6 @@ export default function SubmissionChecklistModal({
             <span className="panel-kicker">Submission checklist</span>
             <h2 id="modal-title">Submit your work</h2>
           </div>
-          <button
-            type="button"
-            className="modal-close-btn"
-            aria-label="Close"
-            onClick={onClose}
-            disabled={submitting}
-          >
-            <X size={18} />
-          </button>
         </div>
 
         <p className="submission-modal__intro">
@@ -272,6 +260,16 @@ export default function SubmissionChecklistModal({
             </button>
           </div>
         </form>
+
+        <button
+          type="button"
+          className="modal-close-btn"
+          aria-label="Close"
+          onClick={onClose}
+          disabled={submitting}
+        >
+          <X size={18} />
+        </button>
       </div>
     </dialog>
   );

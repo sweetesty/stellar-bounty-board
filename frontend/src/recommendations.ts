@@ -30,47 +30,41 @@ export interface ContributorProfile {
 export function scoreMatch(bounty: Bounty, skills: string[]): number {
   if (!skills || skills.length === 0) return 0;
 
-  // Collect all text tokens from the bounty that could indicate skill relevance
   const bountyTokens: string[] = bounty.labels.map((l) => l.name.toLowerCase());
+  const splitTerms = (value: string) =>
+    value
+      .toLowerCase()
+      .split(/[^a-z0-9#+.]+/)
+      .filter((part) => part.length >= 2);
 
-  // Also include bounty.tags if present (used in RecommendedBounties.tsx)
-  const bountyWithTags = bounty as unknown as { tags?: string[] };
-  if (Array.isArray(bountyWithTags.tags)) {
-    const tags = bountyWithTags.tags;
-    bountyTokens.push(...tags.map((t: string) => t.toLowerCase()));
+  if (Array.isArray(bounty.tags)) {
+    bountyTokens.push(...bounty.tags.map((t: string) => t.toLowerCase()));
   }
 
-  // Include title and summary for broader matching
-  bountyTokens.push(bounty.title.toLowerCase());
-  bountyTokens.push(bounty.summary.toLowerCase());
+  bountyTokens.push(...splitTerms(bounty.title));
+  bountyTokens.push(...splitTerms(bounty.summary));
 
-  // Also split multi-word tokens for partial matching
   const expandedTokens = new Set<string>();
   for (const token of bountyTokens) {
     if (token.length === 0) continue;
     expandedTokens.add(token);
-    // Split on non-alphanumeric boundaries to catch e.g. "react" in "react-native"
     for (const part of token.split(/[^a-z0-9#+.]+/)) {
       if (part.length >= 2) expandedTokens.add(part);
     }
   }
 
-  // Normalize skills to lower case
   const normalizedSkills = skills.map((s) => s.toLowerCase().trim()).filter(Boolean);
 
   if (normalizedSkills.length === 0) return 0;
 
-  // Count matching skills
   let matchCount = 0;
   for (const skill of normalizedSkills) {
-    // Check exact match in any token
     if (expandedTokens.has(skill)) {
       matchCount++;
       continue;
     }
-    // Check if skill is contained within any token (e.g. skill "js" in "node.js")
     for (const token of expandedTokens) {
-      if (token.includes(skill) || skill.includes(token)) {
+      if (skill.length >= 3 && token.length >= 3 && (token.includes(skill) || skill.includes(token))) {
         matchCount++;
         break;
       }
@@ -109,10 +103,6 @@ const STATUS_WEIGHTS: Record<BountyStatus, number> = {
   "expired": 0,
 };
 
-function normalizeTerms(values: string[]): string[] {
-  return [...new Set(values.map((value) => value.trim().toLowerCase()).filter(Boolean))];
-}
-
 export function calculateRecommendationScore(
   bounty: Bounty,
   profile: ContributorProfile
@@ -127,7 +117,7 @@ export function calculateRecommendationScore(
     const weight = LABEL_WEIGHTS[normalizedLabel] || 0.1;
 
     if (profile.completedLabels.includes(normalizedLabel)) {
-      reasons.push(`You've worked with "${label}" before`);
+      reasons.push(`You've worked with "${label.name}" before`);
       return acc + weight * 1.5;
     }
 

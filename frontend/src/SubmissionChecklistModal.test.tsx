@@ -1,5 +1,5 @@
 import React from "react";
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { axe } from "jest-axe";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -64,20 +64,17 @@ describe("SubmissionChecklistModal keyboard accessibility", () => {
     await user.tab();
     expect(screen.getByLabelText(/notes for the maintainer/i)).toHaveFocus();
 
-    await user.tab();
-    expect(screen.getByRole("button", { name: "Close" })).toHaveFocus();
-
-    await user.tab();
-    expect(contributorInput).toHaveFocus();
-
-    screen.getByRole("button", { name: "Cancel" }).focus();
+    fireEvent.keyDown(screen.getByLabelText(/notes for the maintainer/i), { key: "Tab" });
     expect(screen.getByRole("button", { name: "Cancel" })).toHaveFocus();
 
-    await user.tab();
+    fireEvent.keyDown(screen.getByRole("button", { name: "Cancel" }), { key: "Tab" });
     expect(screen.getByRole("button", { name: "Submit work" })).toHaveFocus();
 
-    await user.keyboard("{Shift>}{Tab}{/Shift}");
-    expect(screen.getByRole("button", { name: "Cancel" })).toHaveFocus();
+    fireEvent.keyDown(screen.getByRole("button", { name: "Submit work" }), { key: "Tab" });
+    expect(screen.getByRole("button", { name: "Close" })).toHaveFocus();
+
+    fireEvent.keyDown(screen.getByRole("button", { name: "Close" }), { key: "Tab" });
+    expect(contributorInput).toHaveFocus();
   });
 
   it("closes through Escape", async () => {

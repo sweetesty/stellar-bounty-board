@@ -2,25 +2,17 @@ import { FormEvent, ReactNode, Suspense, lazy, memo, useCallback, useEffect, use
 import {
   ArrowUpRight,
   Coins,
-  Download,
   ExternalLink,
-  FileText,
-  Filter,
   FolderGit2,
   GitBranch,
   HandCoins,
   Moon,
-  Plus,
   Rocket,
   Search,
   ShieldCheck,
   SlidersHorizontal,
-  Star,
   Sun,
-  Trash2,
-  Upload,
   UserRound,
-  X,
   ArrowUpDown,
 } from "lucide-react";
 import { toast } from 'sonner';
@@ -36,14 +28,13 @@ import {
   submitBounty,
 } from "./api";
 import SubmissionChecklistModal, { type SubmissionFormData } from "./SubmissionChecklistModal";
-import { BountyRecommendation, ContributorProfile, createDefaultProfile, generateRecommendations, updateProfileFromBounties } from "./recommendations";
+import { createDefaultProfile, generateRecommendations } from "./recommendations";
 import RecommendedBounties from "./RecommendedBounties";
-import { statusCopy, actionCopy, readInitialFilters, FilterState, statusOptions, statusGlossary, sortOptions } from "./constants";
-import { filterBounties, getRewardBounds, getActiveRewardLabel, getContributorMetrics, getUniqueRepos, getUniqueTokenSymbols, getRepoMetrics, sortBounties, debounce, SortOption, SortState, xlmToUsd } from "./utils";
+import { statusCopy, actionCopy, readInitialFilters, statusOptions, statusGlossary, sortOptions } from "./constants";
+import { filterBounties, getRewardBounds, getActiveRewardLabel, getContributorMetrics, getUniqueRepos, getUniqueTokenSymbols, sortBounties, debounce, SortOption, xlmToUsd } from "./utils";
 import { Bounty, CreateBountyPayload, OpenIssue, BountyStatus } from "./types";
 
 import GitHubIssuePreviewCard from "./GitHubIssuePreviewCard";
-import UsdAmount from "./UsdAmount";
 
 import SkeletonBountyCard from "./SkeletonBountyCard";
 import EmptyState from "./EmptyState";
@@ -52,9 +43,6 @@ import { ShortcutsHelpOverlay } from "./ShortcutsHelpOverlay";
 // Lazy-load BountyDetailPage — it is only rendered on /bounties/:id routes,
 // so deferring it keeps the initial board bundle smaller.
 const BountyDetailPage = lazy(() => import("./BountyDetailPage"));
-
-const STELLAR_PUBLIC_KEY_HINT = "Expected Stellar public key (starts with G and is 56 characters).";
-const STELLAR_PUBLIC_KEY_REGEX = /^G[A-Z2-7]{55}$/;
 
 const DARK_MODE_KEY = "stellar-bounty-board-theme";
 
@@ -126,15 +114,6 @@ const contributorStatuses: Array<BountyStatus | "all"> = [
   "refunded",
   "expired",
 ];
-const boardStatuses: Array<BountyStatus | "all"> = [
-  "all",
-  "open",
-  "reserved",
-  "submitted",
-  "released",
-  "refunded",
-];
-
 type BountyAction = "reserve" | "submit" | "release" | "refund";
 
 function repoOwner(repo: string): string {
@@ -144,7 +123,7 @@ function repoOwner(repo: string): string {
 function isInteractiveTarget(target: EventTarget | null): boolean {
   return target instanceof HTMLElement && Boolean(
     target.closest(
-      'a, button, input, select, textarea, summary, [role="button"], [role="link"], [tabindex]:not([tabindex="-1"])',
+      'a, button, input, select, textarea, summary, [role="button"], [role="link"]',
     ),
   );
 }
@@ -573,7 +552,7 @@ function App() {
     return getContributorMetrics(bounties, profileContributor);
   }, [bounties, profileContributor]);
 
-  const [profile, setProfile] = useState(() => createDefaultProfile());
+  const [profile] = useState(() => createDefaultProfile());
   const recommendations = useMemo(() => {
     return generateRecommendations(bounties, profile);
   }, [bounties, profile]);

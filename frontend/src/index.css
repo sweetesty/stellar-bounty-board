@@ -1413,6 +1413,7 @@ select {
 }
 
 .submission-modal__inner {
+  position: relative;
   padding: 28px;
   display: grid;
   gap: 18px;
@@ -1431,6 +1432,9 @@ select {
 }
 
 .modal-close-btn {
+  position: absolute;
+  top: 28px;
+  right: 28px;
   background: transparent;
   border: 1px solid var(--line);
   border-radius: 999px;

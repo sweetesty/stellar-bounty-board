@@ -23,7 +23,7 @@ async function parseResponse<T>(response: Response): Promise<T> {
 
 function parseFilenameFromContentDisposition(header: string | null): string | null {
   if (!header) return null;
-  const match = header.match(/filename\*?=(?:UTF-8''|")?([^\";]+)"?/i);
+  const match = header.match(/filename\*?=(?:UTF-8''|")?([^";]+)"?/i);
   if (!match?.[1]) return null;
   try {
     return decodeURIComponent(match[1]);
