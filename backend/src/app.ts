@@ -21,7 +21,7 @@ import {
   getGlobalMetrics,
   getLeaderboard,
 } from "./services/bountyStore";
-import { listOpenIssues } from "./services/openIssues";
+import { listOpenIssues, getOpenIssuesFeedStatus } from "./services/openIssues";
 import {
   bountyIdSchema,
   createBountySchema,
@@ -213,6 +213,16 @@ app.get("/api/health", (_req: Request, res: Response) => {
     service: "stellar-bounty-board-backend",
     status: "ok",
     timestamp: new Date().toISOString(),
+  });
+});
+
+app.get("/api/health/deep", async (_req: Request, res: Response) => {
+  const openIssuesFeed = getOpenIssuesFeedStatus();
+  res.json({
+    service: "stellar-bounty-board-backend",
+    status: "ok",
+    timestamp: new Date().toISOString(),
+    openIssuesFeed,
   });
 });
 
@@ -410,8 +420,14 @@ app.post(
   },
 );
 
-app.get("/api/open-issues", (_req: Request, res: Response) => {
-  res.json({ data: listOpenIssues() });
+app.get("/api/open-issues", async (_req: Request, res: Response) => {
+  try {
+    const data = await listOpenIssues();
+    res.set("Cache-Control", "max-age=600");
+    res.json({ data });
+  } catch (error) {
+    res.status(500).json({ error: error instanceof Error ? error.message : "open issues fetch error" });
+  }
 });
 
 
