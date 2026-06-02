@@ -176,7 +176,7 @@ describe('Dark Mode', () => {
 
     it('falls back to light mode when localStorage.setItem fails', () => {
       // Mock localStorage.setItem to throw an error
-      const setItemSpy = vi.spyOn(localStorage, 'setItem').mockImplementation(() => {
+      const setItemSpy = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
         throw new Error('localStorage unavailable');
       });
 

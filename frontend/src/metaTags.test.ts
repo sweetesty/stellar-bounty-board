@@ -10,17 +10,20 @@ describe("updateSocialMetaTags", () => {
     // Clear all meta tags before each test
     document.head.innerHTML = "";
     
-    // Mock window.location
-    delete (window as any).location;
-    window.location = {
-      ...originalLocation,
-      origin: "https://stellar-bounty.com",
-    } as Location;
+    Object.defineProperty(window, "location", {
+      configurable: true,
+      value: {
+        ...originalLocation,
+        origin: "https://stellar-bounty.com",
+      },
+    });
   });
 
   afterEach(() => {
-    // Restore original location
-    window.location = originalLocation;
+    Object.defineProperty(window, "location", {
+      configurable: true,
+      value: originalLocation,
+    });
   });
 
   it("should set default meta tags when bounty is null", () => {
