@@ -6,7 +6,7 @@ import { FilterState } from "./constants";
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function debounce<T extends (...args: any[]) => any>(
   func: T,
-  delay: number
+  delay: number,
 ): (...args: Parameters<T>) => void {
   let timeoutId: ReturnType<typeof setTimeout>;
   return (...args: Parameters<T>) => {
@@ -18,16 +18,6 @@ export function debounce<T extends (...args: any[]) => any>(
 export function getUniqueRepos(bounties: Bounty[]): string[] {
   const repos = new Set(bounties.map((bounty) => bounty.repo));
   return Array.from(repos).sort();
-}
-
-/** Distinct token symbols across the given bounties, sorted for a stable dropdown (#293). */
-export function getUniqueTokenSymbols(bounties: Bounty[]): string[] {
-  const tokens = new Set(
-    bounties
-      .map((bounty) => bounty.tokenSymbol?.trim().toUpperCase())
-      .filter((symbol): symbol is string => Boolean(symbol)),
-  );
-  return Array.from(tokens).sort();
 }
 
 export function getRepoMetrics(bounties: Bounty[], repo: string) {
@@ -54,25 +44,14 @@ export function getRepoMetrics(bounties: Bounty[], repo: string) {
 
 export function filterBounties(bounties: Bounty[], filters: FilterState): Bounty[] {
   return bounties.filter((bounty) => {
-    // Status filter
     if (filters.statusFilter !== "all" && bounty.status !== filters.statusFilter) {
       return false;
     }
 
-    // Repo filter
     if (filters.repoFilter.trim() !== "" && bounty.repo !== filters.repoFilter) {
       return false;
     }
 
-    // Token filter (AND with status/other filters) (#293)
-    if (
-      filters.tokenFilter.trim() !== "" &&
-      bounty.tokenSymbol?.toUpperCase() !== filters.tokenFilter.toUpperCase()
-    ) {
-      return false;
-    }
-
-    // Search filter
     if (filters.searchQuery.trim() !== "") {
       const searchLower = filters.searchQuery.toLowerCase();
       const matchesSearch =
@@ -80,21 +59,15 @@ export function filterBounties(bounties: Bounty[], filters: FilterState): Bounty
         bounty.title.toLowerCase().includes(searchLower) ||
         bounty.labels.some((label) => label.name.toLowerCase().includes(searchLower)) ||
         bounty.status.toLowerCase().includes(searchLower);
-      
+
       if (!matchesSearch) {
         return false;
       }
     }
 
-    // Reward range filter
     const minReward = filters.minReward === "" ? 0 : Number(filters.minReward);
     const maxReward = filters.maxReward === "" ? Infinity : Number(filters.maxReward);
-    
-    if (bounty.amount < minReward || bounty.amount > maxReward) {
-      return false;
-    }
-
-    return true;
+    return bounty.amount >= minReward && bounty.amount <= maxReward;
   });
 }
 
@@ -102,7 +75,7 @@ export function getRewardBounds(bounties: Bounty[]): { lowest: number; highest: 
   if (bounties.length === 0) {
     return { lowest: 0, highest: 0 };
   }
-  
+
   const amounts = bounties.map((bounty) => bounty.amount);
   return {
     lowest: Math.min(...amounts),
@@ -118,12 +91,12 @@ export interface SortState {
 }
 
 export function sortBounties(bounties: Bounty[], sort: SortState): Bounty[] {
-  const sorted = [...bounties].sort((a, b) => {
+  return [...bounties].sort((a, b) => {
     let comparison = 0;
-    
+
     switch (sort.option) {
       case "reward-high":
-        comparison = a.amount - b.amount;
+        comparison = b.amount - a.amount;
         break;
       case "reward-low":
         comparison = a.amount - b.amount;
@@ -132,48 +105,44 @@ export function sortBounties(bounties: Bounty[], sort: SortState): Bounty[] {
         comparison = a.deadlineAt - b.deadlineAt;
         break;
       case "deadline-latest":
-        comparison = a.deadlineAt - b.deadlineAt;
+        comparison = b.deadlineAt - a.deadlineAt;
         break;
       case "newest":
-        comparison = a.createdAt - b.createdAt;
+        comparison = b.createdAt - a.createdAt;
         break;
       case "oldest":
         comparison = a.createdAt - b.createdAt;
         break;
     }
-    
-    // Apply direction
+
     return sort.direction === "asc" ? comparison : -comparison;
   });
-  
-  return sorted;
 }
 
 export function getActiveRewardLabel(
   minReward: string,
   maxReward: string,
-  bounds: { lowest: number; highest: number }
+  bounds: { lowest: number; highest: number },
 ): string {
   const min = minReward === "" ? bounds.lowest : Number(minReward);
   const max = maxReward === "" ? bounds.highest : Number(maxReward);
-  
+
   if (min === bounds.lowest && max === bounds.highest) {
     return "All rewards";
   }
-  
+
   if (min === bounds.lowest) {
     return `Up to ${max} XLM`;
   }
-  
+
   if (max === bounds.highest) {
     return `${min}+ XLM`;
   }
-  
+
   return `${min} - ${max} XLM`;
 }
 
-const XLM_USD_PRICE_URL =
-  "https://api.coingecko.com/api/v3/simple/price?ids=stellar&vs_currencies=usd";
+const XLM_USD_PRICE_URL = "https://api.coingecko.com/api/v3/simple/price?ids=stellar&vs_currencies=usd";
 const XLM_USD_CACHE_MS = 5 * 60 * 1000;
 
 let cachedXlmUsdRate: { rate: number; fetchedAt: number } | null = null;
@@ -234,26 +203,17 @@ export function getContributorMetrics(bounties: Bounty[], contributorAddress?: s
     };
   }
 
-  const contributorBounties = bounties.filter(
-    (bounty) => bounty.contributor === contributorAddress
-  );
-
+  const contributorBounties = bounties.filter((bounty) => bounty.contributor === contributorAddress);
   const countsByStatus = new Map<BountyStatus, number>();
   const releasedTotalsByAsset = new Map<string, number>();
 
   contributorBounties.forEach((bounty) => {
-    // Count by status
-    countsByStatus.set(
-      bounty.status,
-      (countsByStatus.get(bounty.status) || 0) + 1
-    );
+    countsByStatus.set(bounty.status, (countsByStatus.get(bounty.status) || 0) + 1);
 
-    // Sum released amounts by asset
     if (bounty.status === "released") {
-      const asset = bounty.tokenSymbol;
       releasedTotalsByAsset.set(
-        asset,
-        (releasedTotalsByAsset.get(asset) || 0) + bounty.amount
+        bounty.tokenSymbol,
+        (releasedTotalsByAsset.get(bounty.tokenSymbol) || 0) + bounty.amount,
       );
     }
   });
