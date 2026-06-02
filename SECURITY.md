@@ -1,5 +1,37 @@
 # Security Policy
 
+## Content Security Policy (CSP)
+
+The frontend build injects a `Content-Security-Policy-Report-Only` meta tag via `frontend/vite.config.ts`.
+
+### Current policy
+
+```
+default-src 'self';
+connect-src 'self' https://rpc-futurenet.stellar.org https://api.github.com;
+script-src  'self';
+style-src   'self' 'unsafe-inline';
+img-src     'self' data: blob:;
+font-src    'self';
+object-src  'none';
+base-uri    'self';
+form-action 'self';
+```
+
+### Report-only mode
+
+The policy is currently deployed in **report-only mode** (`Content-Security-Policy-Report-Only`).
+Violations are logged to the browser console but do **not** block any functionality.
+Once no violations are observed in staging, the meta tag should be upgraded to
+`Content-Security-Policy` to enforce the policy.
+
+### Updating the policy
+
+Edit the `cspDirectives` array in `frontend/vite.config.ts` → `cspPlugin()`.
+After any change, verify there are no new console violations before promoting to production.
+
+---
+
 ## Supported Versions
 
 Only the latest version of the Stellar Bounty Board is currently supported with security updates.
@@ -80,6 +112,29 @@ for the patched version, unless the reporter requests anonymity. If you would li
 under a specific name, handle, or organisation, please include that preference in your report.
 
 ---
+
+## Logging best practices
+
+The backend logger (`backend/src/logger.ts`, pino) redacts secrets two ways so
+Stellar private keys and credentials never reach log output (#381):
+
+- **Path redaction** masks named fields at any depth: `password`, `secret`,
+  `token`, `apiKey`/`api_key`, `Authorization`, request `authorization` /
+  `cookie` headers, and the Stellar key fields `secretKey`, `privateKey`,
+  `seed`.
+- **Value redaction** scrubs any string matching a Stellar secret seed
+  (`^S[0-9A-Z]{55}$`) wherever it appears — including free-form error messages
+  and nested objects — via a `logMethod` hook, replacing it with
+  `[redacted-secret-key]`.
+
+When adding logging:
+
+- Never log a raw signed transaction, secret seed, or keypair. Log the public
+  key (`G…`) or an opaque identifier instead.
+- Prefer structured fields (`logger.info({ field }, "msg")`) over string
+  interpolation so path redaction can apply.
+- If you introduce a new field name that may carry a secret, add it to the
+  `redact.paths` list in `backend/src/logger.ts`.
 
 ## Automated Security Analysis
 

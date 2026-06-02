@@ -65,6 +65,42 @@ export default function SubmissionChecklistModal({
     onClose();
   }
 
+  function handleDialogKeyDown(e: React.KeyboardEvent<HTMLDialogElement>) {
+    if (e.key === "Escape") {
+      e.preventDefault();
+      onClose();
+      return;
+    }
+
+    if (e.key !== "Tab") return;
+
+    const dialog = dialogRef.current;
+    if (!dialog) return;
+
+    const orderedFocusable = [
+      firstInputRef.current,
+      dialog.querySelector<HTMLElement>('input[type="url"]:not(:disabled)'),
+      dialog.querySelector<HTMLElement>('.checklist-item__toggle:not(:disabled)'),
+      dialog.querySelector<HTMLElement>('textarea:not(:disabled)'),
+      ...Array.from(dialog.querySelectorAll<HTMLElement>('.submission-modal__actions button:not(:disabled)')),
+      dialog.querySelector<HTMLElement>('.modal-close-btn:not(:disabled)'),
+    ].filter((element): element is HTMLElement => Boolean(element));
+
+    if (orderedFocusable.length === 0) {
+      e.preventDefault();
+      dialog.focus();
+      return;
+    }
+
+    const currentIndex = orderedFocusable.findIndex((element) => element === document.activeElement);
+    const nextIndex = e.shiftKey
+      ? (currentIndex <= 0 ? orderedFocusable.length - 1 : currentIndex - 1)
+      : (currentIndex === -1 || currentIndex === orderedFocusable.length - 1 ? 0 : currentIndex + 1);
+
+    e.preventDefault();
+    orderedFocusable[nextIndex].focus();
+  }
+
   const contributorError =
     touched.contributor && contributor.trim() && !STELLAR_PUBLIC_KEY_REGEX.test(contributor.trim())
       ? "Enter a Stellar public key (starts with 'G', 56 characters)"
@@ -102,6 +138,7 @@ export default function SubmissionChecklistModal({
       className="submission-modal"
       onClick={handleDialogClick}
       onCancel={handleCancel}
+      onKeyDown={handleDialogKeyDown}
       aria-labelledby="modal-title"
       aria-modal="true"
     >
@@ -111,15 +148,6 @@ export default function SubmissionChecklistModal({
             <span className="panel-kicker">Submission checklist</span>
             <h2 id="modal-title">Submit your work</h2>
           </div>
-          <button
-            type="button"
-            className="modal-close-btn"
-            aria-label="Close"
-            onClick={onClose}
-            disabled={submitting}
-          >
-            <X size={18} />
-          </button>
         </div>
 
         <p className="submission-modal__intro">
@@ -232,6 +260,16 @@ export default function SubmissionChecklistModal({
             </button>
           </div>
         </form>
+
+        <button
+          type="button"
+          className="modal-close-btn"
+          aria-label="Close"
+          onClick={onClose}
+          disabled={submitting}
+        >
+          <X size={18} />
+        </button>
       </div>
     </dialog>
   );
