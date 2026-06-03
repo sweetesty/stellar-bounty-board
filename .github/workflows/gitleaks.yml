@@ -16,6 +16,6 @@ jobs:
           fetch-depth: 0
 
       - name: Run gitleaks
-        uses: gitleaks/gitleaks-action@v8
+        uses: gitleaks/gitleaks-action@v2
         with:
           args: --config=.gitleaks.toml

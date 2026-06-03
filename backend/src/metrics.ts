@@ -1,25 +1,9 @@
-class Registry {
-  metrics(): string { return ''; }
-  getSingleMetric(name: string): any { return null; }
-}
-
-class Counter<T extends string = string> {
-  constructor(options: any) {}
-  inc(labels?: any, value?: number): void {}
-  observe(labels: any, value: number): void {}
-}
-
-class Histogram<T extends string = string> {
-  constructor(options: any) {}
-  observe(labels: any, value: number): void {}
-}
-
-function collectDefaultMetrics(options: any): void {}
+import { collectDefaultMetrics, Counter, Histogram, Registry } from "prom-client";
 
 export const register = new Registry();
 
 try {
-  if (!register.getSingleMetric('process_cpu_user_seconds_total')) {
+  if (!register.getSingleMetric("process_cpu_user_seconds_total")) {
     collectDefaultMetrics({ register });
   }
 } catch {
@@ -50,30 +34,30 @@ function getOrCreateHistogram(name: string, help: string): Histogram<string> {
   return new Histogram({
     name,
     help,
-    labelNames: ['method', 'route', 'status_code'] as const,
+    labelNames: ["method", "route", "status_code"] as const,
     buckets: [0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10],
     registers: [register],
   });
 }
 
 export const bountiesCreatedTotal = getOrCreateCounter(
-  'bounties_created_total',
-  'Total number of bounties created'
+  "bounties_created_total",
+  "Total number of bounties created",
 );
 
 export const bountiesReleasedTotal = getOrCreateCounter(
-  'bounties_released_total',
-  'Total number of bounties released'
+  "bounties_released_total",
+  "Total number of bounties released",
 );
 
 export const bountiesDisputedTotal = getOrCreateCounter(
-  'bounties_disputed_total',
-  'Total number of bounties disputed'
+  "bounties_disputed_total",
+  "Total number of bounties disputed",
 );
 
 export const httpRequestDuration = getOrCreateHistogram(
-  'http_request_duration_seconds',
-  'Duration of HTTP requests in seconds'
+  "http_request_duration_seconds",
+  "Duration of HTTP requests in seconds",
 );
 
 export async function getMetrics(): Promise<string> {

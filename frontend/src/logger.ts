@@ -1,13 +1,8 @@
-import pino from "pino";
-
-const logger = pino({ name: "frontend" });
-
 export function logError(component: string, error: unknown) {
-  if (error instanceof Error) {
-    logger.error({ component, err: { message: error.message, stack: error.stack } }, "Component error");
-  } else {
-    logger.error({ component, err: String(error) }, "Component error");
-  }
+  const message = error instanceof Error ? error.message : String(error);
+  console.error(`[${component}]`, message, error instanceof Error ? error.stack : "");
 }
+
+const logger = { error: logError };
 
 export default logger;

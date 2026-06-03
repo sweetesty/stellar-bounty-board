@@ -1,10 +1,4 @@
-class Redis {
-  constructor(url: string, options?: any) {}
-  on(event: string, callback: Function) {}
-  async get(key: string): Promise<string | null> { return null; }
-  async set(key: string, value: string, mode?: string, duration?: number): Promise<void> {}
-  async del(key: string): Promise<void> {}
-}
+import Redis from "ioredis";
 import { logStructured } from "../logger";
 
 /**

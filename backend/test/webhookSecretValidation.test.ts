@@ -1,16 +1,15 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { validateGitHubWebhookSecret } from "../src/validation/webhookSecretValidation";
 
+vi.mock("../src/logger", () => ({
+  logStructured: vi.fn(),
+}));
+
 describe("validateGitHubWebhookSecret", () => {
   const originalEnv = process.env;
 
   beforeEach(() => {
-    // Create a fresh copy of environment variables for each test
     process.env = { ...originalEnv };
-    // Mock the logger to avoid console output during tests
-    vi.mock("../src/logger", () => ({
-      logStructured: vi.fn(),
-    }));
   });
 
   afterEach(() => {
