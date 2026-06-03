@@ -1,6 +1,9 @@
 import fs from "node:fs";
 import path from "node:path";
-import { sendNotification, type NotificationRecipient } from "./notificationService";
+import {
+  sendNotification,
+  type NotificationRecipient,
+} from "./notificationService";
 import { logStructured } from "../logger";
 import { getCache, type CacheAdapter } from "./cache";
 import { bountiesCreatedTotal, bountiesReleasedTotal } from "../metrics";
@@ -25,12 +28,6 @@ export type BountyStatus =
   | "refunded"
   | "expired";
 
-/**
- * Allowed transition types for a bounty's lifecycle state machine.
- *
- * @typedef {"reserve" | "submit" | "release" | "refund" | "expire"} BountyTransitionType
- */
-export type BountyTransitionType = "reserve" | "submit" | "release" | "refund" | "expire";
 
 /**
  * Supported value types for audit log metadata records.
@@ -43,9 +40,7 @@ export type AuditMetadataValue = string | number | boolean | null;
  * Represents a historical event in the lifecycle of a bounty.
  */
 export interface BountyEvent {
-  /** The type of lifecycle event. */
-  type: "created" | "reserved" | "submitted" | "released" | "refunded" | "expired";
-  /** Unix timestamp in seconds when the event occurred. */
+
   timestamp: number;
   /** Stellar public key of the actor who triggered the event. */
   actor?: string;
@@ -181,7 +176,9 @@ function getAuditStorePath(): string {
   }
 
   const base = getStorePath();
-  return base.endsWith(".json") ? base.replace(/\.json$/i, ".audit.json") : `${base}.audit.json`;
+  return base.endsWith(".json")
+    ? base.replace(/\.json$/i, ".audit.json")
+    : `${base}.audit.json`;
 }
 
 const sampleBounties: BountyRecord[] = [
@@ -204,7 +201,11 @@ const sampleBounties: BountyRecord[] = [
     version: 1,
     events: [
       { type: "created", timestamp: 1710000000 },
-      { type: "reserved", timestamp: 1710003600, actor: "GBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB" },
+      {
+        type: "reserved",
+        timestamp: 1710003600,
+        actor: "GBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB",
+      },
     ],
     reservationTimeoutSeconds: 604800,
   },
@@ -275,7 +276,9 @@ function writeStore(records: BountyRecord[]): void {
 
 function readAuditStore(): BountyAuditLogRecord[] {
   ensureAuditStore();
-  return JSON.parse(fs.readFileSync(getAuditStorePath(), "utf8")) as BountyAuditLogRecord[];
+  return JSON.parse(
+    fs.readFileSync(getAuditStorePath(), "utf8"),
+  ) as BountyAuditLogRecord[];
 }
 
 function writeAuditStore(records: BountyAuditLogRecord[]): void {
@@ -297,7 +300,9 @@ function cleanAuditMetadata(
     return undefined;
   }
 
-  const entries = Object.entries(metadata).filter(([, value]) => value !== undefined);
+  const entries = Object.entries(metadata).filter(
+    ([, value]) => value !== undefined,
+  );
   if (entries.length === 0) {
     return undefined;
   }
@@ -336,10 +341,15 @@ function normalizeRecords(records: BountyRecord[]): BountyRecord[] {
 
   const next = records.map((record) => {
     // Ensure events array exists (for backward compatibility)
-    const events: BountyEvent[] = record.events || [{ type: "created" as const, timestamp: record.createdAt }];
+    const events: BountyEvent[] = record.events || [
+      { type: "created" as const, timestamp: record.createdAt },
+    ];
 
     // Check for expired deadline
-    if ((record.status === "open" || record.status === "reserved") && now > record.deadlineAt) {
+    if (
+      (record.status === "open" || record.status === "reserved") &&
+      now > record.deadlineAt
+    ) {
       changed = true;
       auditEntries.push({
         bountyId: record.id,
@@ -356,10 +366,7 @@ function normalizeRecords(records: BountyRecord[]): BountyRecord[] {
       return {
         ...record,
         status: "expired" as const,
-        events: [
-          ...events,
-          { type: "expired" as const, timestamp: now },
-        ],
+        events: [...events, { type: "expired" as const, timestamp: now }],
       };
     }
 
@@ -378,7 +385,11 @@ function normalizeRecords(records: BountyRecord[]): BountyRecord[] {
         reservedAt: undefined,
         events: [
           ...events,
-          { type: "expired" as const, timestamp: now, details: { reason: "reservation_timeout" } },
+          {
+            type: "expired" as const,
+            timestamp: now,
+            details: { reason: "reservation_timeout" },
+          },
         ],
       };
     }
@@ -420,8 +431,13 @@ function findBounty(records: BountyRecord[], id: string): BountyRecord {
   return bounty;
 }
 
-function persistUpdated(records: BountyRecord[], updated: BountyRecord): BountyRecord {
-  const next = records.map((record) => (record.id === updated.id ? updated : record));
+function persistUpdated(
+  records: BountyRecord[],
+  updated: BountyRecord,
+): BountyRecord {
+  const next = records.map((record) =>
+    record.id === updated.id ? updated : record,
+  );
   writeStore(next);
   return updated;
 }
@@ -431,28 +447,27 @@ export interface ListBountiesOptions {
   q?: string;
 }
 
-/**
- * Retrieves a list of all bounties, normalized and sorted by creation date descending.
- * Optionally filters the results by a search query matching title, summary, or labels.
- *
- * @param {ListBountiesOptions} [options={}] - Filtering options for the bounty retrieval.
- * @returns {BountyRecord[]} The sorted and filtered list of bounty records.
- */
-export function listBounties(options: ListBountiesOptions = {}): BountyRecord[] {
-  const records = normalizeRecords(readStore());
-  let sorted = [...records].sort((a, b) => b.createdAt - a.createdAt);
 
+  const records = normalizeRecords(readStore());
   const q = options.q?.trim().toLowerCase();
-  if (q) {
-    sorted = sorted.filter(
-      (b) =>
-        b.title.toLowerCase().includes(q) ||
-        b.summary.toLowerCase().includes(q) ||
-        b.labels.some((l) => l.toLowerCase().includes(q)),
-    );
+
+  // Single-pass: filter and copy in one iteration, then sort.
+  // Avoids the prior two-pass pattern of spread-sort then filter.
+  const result: BountyRecord[] = [];
+  for (let i = 0; i < records.length; i++) {
+    const b = records[i];
+    if (
+      !q ||
+      b.title.toLowerCase().includes(q) ||
+      b.summary.toLowerCase().includes(q) ||
+      b.labels.some((l) => l.toLowerCase().includes(q))
+    ) {
+      result.push(b);
+    }
   }
 
-  return sorted;
+  result.sort((a, b) => b.createdAt - a.createdAt);
+  return result;
 }
 
 // ── Cached list for the public board (#361) ──────────────────────────────────
@@ -521,17 +536,7 @@ async function withGlobalLock<T>(fn: () => T | Promise<T>): Promise<T> {
   }
 }
 
-/**
- * Creates a new bounty record and persists it to the store.
- *
- * Acquires a global lock during execution to prevent race conditions. Invalidates
- * the bounty cache and triggers an asynchronous, fire-and-forget notification to the maintainer.
- *
- * @param {CreateBountyInput} input - The input parameters for creating the bounty.
- * @returns {Promise<BountyRecord>} A promise that resolves to the newly created bounty record.
- */
-export async function createBounty(input: CreateBountyInput): Promise<BountyRecord> {
-  return withGlobalLock(async () => {
+
     const records = listBounties();
     const createdAt = nowInSeconds();
     const bounty: BountyRecord = {
@@ -559,7 +564,9 @@ export async function createBounty(input: CreateBountyInput): Promise<BountyReco
     bountiesCreatedTotal.inc();
 
     // Trigger notification on create
-    const recipients: NotificationRecipient[] = [{ role: "maintainer", address: input.maintainer }];
+    const recipients: NotificationRecipient[] = [
+      { role: "maintainer", address: input.maintainer },
+    ];
 
     // Non-blocking: notifications fire-and-forget
     sendNotification(recipients, "bounty_created", {
@@ -571,28 +578,15 @@ export async function createBounty(input: CreateBountyInput): Promise<BountyReco
       maintainer: input.maintainer,
       amount: bounty.amount,
       tokenSymbol: bounty.tokenSymbol,
-    }).catch((err) => console.warn("[createBounty] Notification failed (non-blocking):", err));
+    }).catch((err) =>
+      console.warn("[createBounty] Notification failed (non-blocking):", err),
+    );
 
     return bounty;
   });
 }
 
-/**
- * Reserves an open bounty for a specific contributor.
- *
- * Acquires a global lock during execution. If `expectedVersion` is provided,
- * it verifies that the bounty's version matches, preventing race conditions.
- *
- * @param {string} id - The unique ID of the bounty to reserve.
- * @param {string} contributor - The Stellar address of the contributor reserving the bounty.
- * @param {number} [expectedVersion] - The expected version of the bounty record for concurrency control.
- * @returns {Promise<BountyRecord>} A promise that resolves to the updated bounty record.
- * @throws {Error} If the bounty is not found.
- * @throws {Error} If the bounty is not in the "open" status.
- * @throws {Error} If the provided `expectedVersion` does not match the bounty's current version.
- */
-export async function reserveBounty(id: string, contributor: string, expectedVersion?: number): Promise<BountyRecord> {
-  return withGlobalLock(async () => {
+
     const records = listBounties();
     const bounty = findBounty(records, id);
 
@@ -602,7 +596,9 @@ export async function reserveBounty(id: string, contributor: string, expectedVer
 
     // Race condition prevention: check version if provided
     if (expectedVersion !== undefined && bounty.version !== expectedVersion) {
-      throw new Error("Bounty was just reserved by someone else. Please refresh and try again.");
+      throw new Error(
+        "Bounty was just reserved by someone else. Please refresh and try again.",
+      );
     }
 
     const now = nowInSeconds();
@@ -612,7 +608,10 @@ export async function reserveBounty(id: string, contributor: string, expectedVer
       status: "reserved",
       reservedAt: now,
       version: bounty.version + 1,
-      events: [...bounty.events, { type: "reserved", timestamp: now, actor: contributor }],
+      events: [
+        ...bounty.events,
+        { type: "reserved", timestamp: now, actor: contributor },
+      ],
     };
 
     const persisted = persistUpdated(records, updated);
@@ -669,7 +668,10 @@ export async function submitBounty(
       submissionUrl,
       notes,
       version: bounty.version + 1,
-      events: [...bounty.events, { type: "submitted", timestamp: now, actor: contributor }],
+      events: [
+        ...bounty.events,
+        { type: "submitted", timestamp: now, actor: contributor },
+      ],
     };
 
     const persisted = persistUpdated(records, updated);
@@ -725,9 +727,14 @@ export async function releaseBounty(
       ...bounty,
       status: "released",
       releasedAt: now,
-      releasedTxHash: transactionHash?.trim() ? transactionHash.trim() : bounty.releasedTxHash,
+      releasedTxHash: transactionHash?.trim()
+        ? transactionHash.trim()
+        : bounty.releasedTxHash,
       version: bounty.version + 1,
-      events: [...bounty.events, { type: "released", timestamp: now, actor: maintainer }],
+      events: [
+        ...bounty.events,
+        { type: "released", timestamp: now, actor: maintainer },
+      ],
     };
 
     const persisted = persistUpdated(records, updated);
@@ -791,9 +798,14 @@ export async function refundBounty(
       ...bounty,
       status: "refunded",
       refundedAt: now,
-      refundedTxHash: transactionHash?.trim() ? transactionHash.trim() : bounty.refundedTxHash,
+      refundedTxHash: transactionHash?.trim()
+        ? transactionHash.trim()
+        : bounty.refundedTxHash,
       version: bounty.version + 1,
-      events: [...bounty.events, { type: "refunded", timestamp: now, actor: maintainer }],
+      events: [
+        ...bounty.events,
+        { type: "refunded", timestamp: now, actor: maintainer },
+      ],
     };
 
     const persisted = persistUpdated(records, updated);
@@ -928,7 +940,8 @@ export function getMaintainerMetrics(maintainer: string): MaintainerMetrics {
     expiredCount: bounties.filter((b) => b.status === "expired").length,
     totalFunded,
     totalReleased,
-    averageRewardAmount: bounties.length > 0 ? totalFunded / bounties.length : 0,
+    averageRewardAmount:
+      bounties.length > 0 ? totalFunded / bounties.length : 0,
   };
 }
 
@@ -990,9 +1003,6 @@ export function getGlobalMetrics(): GlobalMetrics {
 }
 
 
-/**
- * Represents a contributor's entry in the platform leaderboard.
- */
 export interface LeaderboardEntry {
   /** The Stellar address of the contributor. */
   address: string;
@@ -1028,6 +1038,9 @@ export function getLeaderboard(limit = 10): LeaderboardEntry[] {
   }
 
   return Array.from(entries.values())
-    .sort((a, b) => b.totalXlm - a.totalXlm || b.bountiesCompleted - a.bountiesCompleted)
+    .sort(
+      (a, b) =>
+        b.totalXlm - a.totalXlm || b.bountiesCompleted - a.bountiesCompleted,
+    )
     .slice(0, limit);
 }
