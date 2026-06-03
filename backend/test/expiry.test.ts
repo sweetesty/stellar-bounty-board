@@ -1,10 +1,13 @@
-import { describe, it, expect } from "vitest";
-import { expireStaleReservations } from "../src/services/bountyStore";
+import { describe, expect, it } from 'vitest';
+import { expireStaleReservations } from '../src/services/reservationExpirationJob';
 
-describe("expireStaleReservations", () => {
-  it("returns a number (0 when no stale reservations)", () => {
+describe('expireStaleReservations', () => {
+  it('returns an expiration result with zero stale reservations when none exist', () => {
     const result = expireStaleReservations();
-    expect(typeof result).toBe("number");
-    expect(result).toBeGreaterThanOrEqual(0);
+
+    expect(typeof result.expiredCount).toBe('number');
+    expect(result.expiredCount).toBeGreaterThanOrEqual(0);
+    expect(Array.isArray(result.expiredBountyIds)).toBe(true);
+    expect(typeof result.checkedAt).toBe('number');
   });
 });

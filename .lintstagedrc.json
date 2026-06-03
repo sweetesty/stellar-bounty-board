@@ -1,6 +1,15 @@
 {
-  "*.{ts,tsx,js,jsx}": ["eslint --fix", "prettier --write"],
+  "frontend/src/**/*.{ts,tsx}": [
+    "bash -c \"npm --prefix frontend run typecheck\"",
+    "bash -c \"npm --prefix frontend run lint:fix\"",
+    "prettier --write"
+  ],
+  "backend/src/**/*.ts": [
+    "bash -c \"npm --prefix backend run typecheck\"",
+    "bash -c \"npm --prefix backend run lint:fix\"",
+    "prettier --write"
+  ],
   "*.{json,md,yaml,yml}": ["prettier --write"],
   "*.sol": ["forge fmt"],
-  "*.{rs}": ["rustfmt"]
+  "*.rs": ["rustfmt"]
 }

@@ -1,5 +1,37 @@
 # Security Policy
 
+## Content Security Policy (CSP)
+
+The frontend build injects a `Content-Security-Policy-Report-Only` meta tag via `frontend/vite.config.ts`.
+
+### Current policy
+
+```
+default-src 'self';
+connect-src 'self' https://rpc-futurenet.stellar.org https://api.github.com;
+script-src  'self';
+style-src   'self' 'unsafe-inline';
+img-src     'self' data: blob:;
+font-src    'self';
+object-src  'none';
+base-uri    'self';
+form-action 'self';
+```
+
+### Report-only mode
+
+The policy is currently deployed in **report-only mode** (`Content-Security-Policy-Report-Only`).
+Violations are logged to the browser console but do **not** block any functionality.
+Once no violations are observed in staging, the meta tag should be upgraded to
+`Content-Security-Policy` to enforce the policy.
+
+### Updating the policy
+
+Edit the `cspDirectives` array in `frontend/vite.config.ts` → `cspPlugin()`.
+After any change, verify there are no new console violations before promoting to production.
+
+---
+
 ## Supported Versions
 
 Only the latest version of the Stellar Bounty Board is currently supported with security updates.
@@ -103,6 +135,12 @@ When adding logging:
   interpolation so path redaction can apply.
 - If you introduce a new field name that may carry a secret, add it to the
   `redact.paths` list in `backend/src/logger.ts`.
+
+## Authentication Architecture
+
+The maintainer API routes are protected by Stellar keypair signature verification rather than JWT or session tokens. See [ADR 0002 — Stellar Signature Authentication](docs/adr/0002-stellar-signature-auth.md) for the rationale, verification flow, multi-key support, and replay attack considerations.
+
+---
 
 ## Automated Security Analysis
 
