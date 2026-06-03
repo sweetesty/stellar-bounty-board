@@ -1,6 +1,5 @@
 
-import { ReactNode, useCallback, useState } from "react";
-import { ArrowUpRight, Check, Clock, Copy } from "lucide-react";
+
 import UsdAmount from "./UsdAmount";
 
 
@@ -114,6 +113,24 @@ export default function BountyDetailPage({
   formatTimestamp,
 }: Props) {
 
+  function handleShare() {
+    if (!bounty) return;
+    const permalink = `${window.location.origin}/bounties/${encodeURIComponent(bounty.id)}`;
+    navigator.clipboard.writeText(permalink).then(() => {
+      // Show brief confirmation
+      const button = document.querySelector('[aria-label="Share bounty"]') as HTMLButtonElement;
+      if (button) {
+        const originalText = button.innerHTML;
+        button.innerHTML = `<Share2 size={16} />Copied!`;
+        setTimeout(() => {
+          button.innerHTML = originalText;
+        }, 2000);
+      }
+    }).catch((err) => {
+      console.error("Failed to copy URL:", err);
+    });
+  }
+
   return (
     <div className="page-shell">
       <div className="glow glow-left" />
@@ -125,14 +142,7 @@ export default function BountyDetailPage({
             <span className="panel-kicker">Bounty</span>
             <h2>{bounty ? bounty.title : "Bounty"}</h2>
           </div>
-          <button
-            type="button"
-            className="secondary-button"
-            onClick={onBack}
-            disabled={loading}
-          >
-            Back
-          </button>
+
         </div>
 
         {loading && !bounty ? (
