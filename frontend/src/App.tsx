@@ -30,8 +30,7 @@ import {
 import SubmissionChecklistModal, { type SubmissionFormData } from "./SubmissionChecklistModal";
 import { createDefaultProfile, generateRecommendations } from "./recommendations";
 import RecommendedBounties from "./RecommendedBounties";
-import { statusCopy, actionCopy, readInitialFilters, statusOptions, statusGlossary, sortOptions } from "./constants";
-import { filterBounties, getRewardBounds, getActiveRewardLabel, getContributorMetrics, getUniqueRepos, getUniqueTokenSymbols, sortBounties, debounce, SortOption, xlmToUsd } from "./utils";
+
 import { Bounty, CreateBountyPayload, OpenIssue, BountyStatus } from "./types";
 
 import GitHubIssuePreviewCard from "./GitHubIssuePreviewCard";
@@ -1155,6 +1154,8 @@ function App() {
                 </div>
                 <HandCoins size={18} />
               </div>
+
+              <StatusFilterTabs status={statusFilter} onChange={setStatusFilter} />
 
               <div className="board-filters">
                 <div className="board-filters__header">
