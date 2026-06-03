@@ -42,11 +42,19 @@ Contract (`contracts`)
 - Soroban Rust contract scaffold
 - Escrow-style bounty lifecycle methods
 
+## Architecture
+
+See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for system architecture, data ownership, and deployment diagrams.
+
+The [bounty lifecycle sequence diagram](docs/ARCHITECTURE.md#bounty-lifecycle-sequence) shows the create, reserve, submit, release, refund, dispute, and resolution flows across Maintainer, Contributor, Arbiter, Backend, and Contract actors.
+
 ## Deployment Guide
 
 See [docs/deployment.md](docs/deployment.md) for step-by-step instructions to deploy the backend on Render and the frontend on Vercel, including required environment variables, health check paths, and troubleshooting tips.
 
 For detailed architecture diagrams and data flow documentation, see [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+
+For the persistence decision (JSON vs database) see the ADR: [docs/adr/0001-json-file-persistence.md](docs/adr/0001-json-file-persistence.md).
 
 For integrating GitHub webhooks — including the HMAC-SHA256 algorithm, Node.js and Python verification examples, timing-safe comparison guidance, and troubleshooting — see [docs/webhook-signatures.md](docs/webhook-signatures.md).
 
@@ -166,6 +174,13 @@ The Soroban contract uses a named error enum (`Error`) for recoverable failures:
 | 3    | `BountyAlreadyReserved` | The bounty is already reserved by another contributor |
 
 These errors are invoked via `panic_with_error!` and surface as `Error(Contract, #N)` in test expectations.
+
+## FAQ
+
+For common issues, troubleshooting steps, wallet setup, testnet funding, transaction errors, and bounty workflow explanations, see:
+
+* [FAQ Guide](./docs/FAQ.md)
+
 
 ## Contribution Hooks
 

@@ -2,12 +2,52 @@
 
 This project is intentionally scoped as an MVP with obvious upgrade paths.
 
+## Run locally
+
+1. Clone the repo and install dependencies:
+
+   ```bash
+   npm install
+   npm --prefix backend install
+   ```
+
+2. Seed demo bounties into the JSON store:
+
+   ```bash
+   node scripts/seed-bounties.js
+   ```
+
+   This creates 10 deterministic bounties across all statuses (open, reserved, submitted, released, refunded, expired).
+
+   **Flags:**
+   - `--count <n>` — control how many bounties to seed (default: 10)
+   - `--reset` — wipe existing store before seeding
+
+   Example:
+
+   ```bash
+   node scripts/seed-bounties.js --count 5 --reset
+   ```
+
+3. Start the backend:
+
+   ```bash
+   npm --prefix backend run dev
+   ```
+
+4. Start the frontend (in another terminal):
+   ```bash
+   npm --prefix frontend run dev
+   ```
+
 If you want to seed good open-source work quickly:
+
 1. Pick one of the drafts in `docs/issues`.
 2. Open it as a GitHub issue with the suggested labels.
 3. Tag whether it is `good first issue`, `enhancement`, or `help wanted`.
 
 High-value contribution areas:
+
 - Wallet-authenticated payout flow
 - GitHub App or webhook integration
 - Soroban event indexing
@@ -29,26 +69,28 @@ We follow the [Conventional Commits](https://www.conventionalcommits.org/) stand
 ```
 
 **Rules:**
+
 - Keep `<subject>` under 50 characters, lowercase, no period
 - Use imperative mood ("add" not "added")
 - The `(<scope>)` is optional but recommended for clarity
 
 ### Commit Types
 
-| Type | Purpose | Example |
-|------|---------|---------|
-| `feat` | New feature | `feat(frontend): add wallet connection UI` |
-| `fix` | Bug fix | `fix(backend): correct bounty status transition logic` |
-| `docs` | Documentation only | `docs(CONTRIBUTING): add commit message guide` |
-| `test` | Test additions or fixes | `test(contract): add escrow release scenarios` |
-| `refactor` | Code refactoring (no behavior change) | `refactor(backend): extract validation to schema` |
-| `chore` | Tooling, dependencies, build scripts | `chore(deps): update Express to 4.18` |
-| `perf` | Performance improvements | `perf(frontend): memoize bounty list rendering` |
-| `ci` | CI/CD pipeline changes | `ci: add GitHub Actions workflow` |
+| Type       | Purpose                               | Example                                                |
+| ---------- | ------------------------------------- | ------------------------------------------------------ |
+| `feat`     | New feature                           | `feat(frontend): add wallet connection UI`             |
+| `fix`      | Bug fix                               | `fix(backend): correct bounty status transition logic` |
+| `docs`     | Documentation only                    | `docs(CONTRIBUTING): add commit message guide`         |
+| `test`     | Test additions or fixes               | `test(contract): add escrow release scenarios`         |
+| `refactor` | Code refactoring (no behavior change) | `refactor(backend): extract validation to schema`      |
+| `chore`    | Tooling, dependencies, build scripts  | `chore(deps): update Express to 4.18`                  |
+| `perf`     | Performance improvements              | `perf(frontend): memoize bounty list rendering`        |
+| `ci`       | CI/CD pipeline changes                | `ci: add GitHub Actions workflow`                      |
 
 ### Examples
 
 **Good:**
+
 ```
 feat(contract): implement release_bounty escrow transfer
 
@@ -60,6 +102,7 @@ Closes #42
 ```
 
 **Also good (for simple changes):**
+
 ```
 fix(api): reject negative bounty amounts
 ```
@@ -340,6 +383,9 @@ chmod +x .husky/pre-commit
 - **New to the project?** Start with [ONBOARDING.md](./ONBOARDING.md)
 - **Stuck on a specific feature?** [Read the architecture docs](./docs/ARCHITECTURE.md)
 - **Local webhook testing?** [ngrok setup guide](./docs/webhook-signatures.md)
+- **For common issues or troubleshooting steps** [FAQ Guide](./docs/FAQ.md)
+
+
 - **Can't figure something out?** Open a Discussion or comment on the issue you're working on
 
 We value quality contributions and clear communication. If this guide is missing something, a PR improving it is one of the most valuable contributions you can make.

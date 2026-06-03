@@ -1,15 +1,15 @@
 {
   "frontend/src/**/*.{ts,tsx}": [
-    "tsc --noEmit -p frontend/tsconfig.json",
-    "eslint --fix",
+    "bash -c \"npm --prefix frontend run typecheck\"",
+    "bash -c \"npm --prefix frontend run lint:fix\"",
     "prettier --write"
   ],
   "backend/src/**/*.ts": [
-    "tsc --noEmit -p backend/tsconfig.json",
-    "eslint --fix",
+    "bash -c \"npm --prefix backend run typecheck\"",
+    "bash -c \"npm --prefix backend run lint:fix\"",
     "prettier --write"
   ],
   "*.{json,md,yaml,yml}": ["prettier --write"],
   "*.sol": ["forge fmt"],
-  "*.{rs}": ["rustfmt"]
+  "*.rs": ["rustfmt"]
 }
