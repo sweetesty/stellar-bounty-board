@@ -1,6 +1,13 @@
-import { Bounty, BountyEvent, CreateBountyPayload, GlobalMetrics, MaintainerMetrics, OpenIssue } from "./types";
+import type {
+  Bounty,
+  BountyEvent,
+  CreateBountyPayload,
+  GlobalMetrics,
+  MaintainerMetrics,
+  OpenIssue,
+} from './types';
 
-const API_BASE = import.meta.env.VITE_API_URL ?? "/api";
+const API_BASE = import.meta.env.VITE_API_URL ?? '/api';
 const RETRYABLE_STATUSES = new Set([429, 500, 502, 503, 504]);
 const READ_RETRY_ATTEMPTS = 3;
 const READ_RETRY_BASE_DELAY_MS = 500;
@@ -15,16 +22,25 @@ type RequestOptions = RequestInit & {
 
 async function parseResponse<T>(response: Response): Promise<T> {
   const body = (await response.json().catch(() => ({}))) as ApiBody<T>;
+
   if (!response.ok) {
-    throw new Error(body.error ?? "Unexpected API error");
+    throw new Error(body.error ?? 'Unexpected API error');
   }
+
   return body;
 }
 
 function parseFilenameFromContentDisposition(header: string | null): string | null {
-  if (!header) return null;
-  const match = header.match(/filename\*?=(?:UTF-8''|")?([^\";]+)"?/i);
-  if (!match?.[1]) return null;
+  if (!header) {
+    return null;
+  }
+
+  const match = header.match(/filename\*?=(?:UTF-8''|")?([^";]+)"?/i);
+
+  if (!match?.[1]) {
+    return null;
+  }
+
   try {
     return decodeURIComponent(match[1]);
   } catch {
@@ -45,14 +61,20 @@ function isRetryableError(error: unknown): boolean {
 }
 
 function formatRetryError(label: string, attempts: number, reason?: string): Error {
-  const suffix = reason ? ` Last error: ${reason}` : "";
+  const suffix = reason ? ` Last error: ${reason}` : '';
+
   return new Error(
-    `${label} failed after ${attempts} attempts due to a temporary backend issue. Please try again in a moment.${suffix}`,
+    `${label} failed after ${attempts} attempts due to a temporary backend issue. Please try again in a moment.${suffix}`
   );
 }
 
 async function requestJson<T>(path: string, options: RequestOptions = {}): Promise<T> {
-  const { retry = true, retryAttempts = READ_RETRY_ATTEMPTS, retryLabel = "Request", ...init } = options;
+  const {
+    retry = true,
+    retryAttempts = READ_RETRY_ATTEMPTS,
+    retryLabel = 'Request',
+    ...init
+  } = options;
 
   let lastError: unknown;
 
@@ -91,8 +113,16 @@ async function requestJson<T>(path: string, options: RequestOptions = {}): Promi
   throw formatRetryError(retryLabel, retryAttempts, message);
 }
 
-async function requestBlob(path: string, options: RequestOptions = {}): Promise<{ blob: Blob; filename: string | null }> {
-  const { retry = true, retryAttempts = READ_RETRY_ATTEMPTS, retryLabel = "Request", ...init } = options;
+async function requestBlob(
+  path: string,
+  options: RequestOptions = {}
+): Promise<{ blob: Blob; filename: string | null }> {
+  const {
+    retry = true,
+    retryAttempts = READ_RETRY_ATTEMPTS,
+    retryLabel = 'Request',
+    ...init
+  } = options;
 
   let lastError: unknown;
 
@@ -106,27 +136,44 @@ async function requestBlob(path: string, options: RequestOptions = {}): Promise<
       }
 
       if (retry && isRetryableResponse(response) && attempt === retryAttempts) {
-        const contentType = response.headers.get("content-type") ?? "";
-        if (contentType.includes("application/json")) {
-          const body = (await response.json().catch(() => ({}))) as ApiBody<{ error?: string }>;
-          throw formatRetryError(retryLabel, retryAttempts, body.error ?? `HTTP ${response.status}`);
+        const contentType = response.headers.get('content-type') ?? '';
+
+        if (contentType.includes('application/json')) {
+          const body = (await response.json().catch(() => ({}))) as ApiBody<{
+            error?: string;
+          }>;
+
+          throw formatRetryError(
+            retryLabel,
+            retryAttempts,
+            body.error ?? `HTTP ${response.status}`
+          );
         }
-        const text = await response.text().catch(() => "");
+
+        const text = await response.text().catch(() => '');
         throw formatRetryError(retryLabel, retryAttempts, text || `HTTP ${response.status}`);
       }
 
       if (!response.ok) {
-        const contentType = response.headers.get("content-type") ?? "";
-        if (contentType.includes("application/json")) {
-          const body = (await response.json().catch(() => ({}))) as ApiBody<{ error?: string }>;
-          throw new Error(body.error ?? "Unexpected API error");
+        const contentType = response.headers.get('content-type') ?? '';
+
+        if (contentType.includes('application/json')) {
+          const body = (await response.json().catch(() => ({}))) as ApiBody<{
+            error?: string;
+          }>;
+
+          throw new Error(body.error ?? 'Unexpected API error');
         }
-        const text = await response.text().catch(() => "");
+
+        const text = await response.text().catch(() => '');
         throw new Error(text || `Request failed with HTTP ${response.status}`);
       }
 
-      const filename = parseFilenameFromContentDisposition(response.headers.get("content-disposition"));
+      const filename = parseFilenameFromContentDisposition(
+        response.headers.get('content-disposition')
+      );
       const blob = await response.blob();
+
       return { blob, filename };
     } catch (error) {
       lastError = error;
@@ -148,30 +195,59 @@ async function requestBlob(path: string, options: RequestOptions = {}): Promise<
   throw formatRetryError(retryLabel, retryAttempts, message);
 }
 
-
-  const body = await requestJson<{ data: Bounty[] }>("/bounties", {
+export async function listBounties(signal?: AbortSignal): Promise<Bounty[]> {
+  const body = await requestJson<{ data: Bounty[] }>('/bounties', {
     retry: true,
-    retryLabel: "Loading bounties",
+    retryLabel: 'Loading bounties',
     signal,
+  });
+
+  return body.data;
+}
+
+export async function getBounty(id: string): Promise<Bounty> {
+  const body = await requestJson<{ data: Bounty }>(`/bounties/${id}`, {
+    retry: true,
+    retryLabel: 'Loading bounty',
+  });
+
+  return body.data;
+}
+
+export async function getBounty(id: string, signal?: AbortSignal): Promise<Bounty> {
+  const body = await requestJson<{ data: Bounty }>(`/bounties/${id}`, {
+    retry: true,
+    retryLabel: "Loading bounty details",
+    signal,
+export async function getBounty(id: string): Promise<Bounty> {
+  const body = await requestJson<{ data: Bounty }>(`/bounties/${id}`, {
+    retry: true,
+    retryLabel: "Loading bounty",
   });
   return body.data;
 }
 
 export async function createBounty(payload: CreateBountyPayload): Promise<Bounty> {
-  const body = await requestJson<{ data: Bounty }>("/bounties", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
+  const body = await requestJson<{ data: Bounty }>('/bounties', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
   });
+
   return body.data;
 }
 
-export async function reserveBounty(id: string, contributor: string, expectedVersion?: number): Promise<Bounty> {
+export async function reserveBounty(
+  id: string,
+  contributor: string,
+  expectedVersion?: number
+): Promise<Bounty> {
   const body = await requestJson<{ data: Bounty }>(`/bounties/${id}/reserve`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ contributor, expectedVersion }),
   });
+
   return body.data;
 }
 
@@ -179,81 +255,93 @@ export async function submitBounty(
   id: string,
   contributor: string,
   submissionUrl: string,
-  notes?: string,
+  notes?: string
 ): Promise<Bounty> {
   const body = await requestJson<{ data: Bounty }>(`/bounties/${id}/submit`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ contributor, submissionUrl, notes }),
   });
+
   return body.data;
 }
 
 export async function releaseBounty(
   id: string,
   maintainer: string,
-  transactionHash?: string,
+  transactionHash?: string
 ): Promise<Bounty> {
   const body = await requestJson<{ data: Bounty }>(`/bounties/${id}/release`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ maintainer, transactionHash }),
   });
+
   return body.data;
 }
 
 export async function refundBounty(
   id: string,
   maintainer: string,
-  transactionHash?: string,
+  transactionHash?: string
 ): Promise<Bounty> {
   const body = await requestJson<{ data: Bounty }>(`/bounties/${id}/refund`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ maintainer, transactionHash }),
   });
+
   return body.data;
 }
 
 export async function listOpenIssues(signal?: AbortSignal): Promise<OpenIssue[]> {
-  const body = await requestJson<{ data: OpenIssue[] }>("/open-issues", {
+  const body = await requestJson<{ data: OpenIssue[] }>('/open-issues', {
     retry: true,
-    retryLabel: "Loading open issues",
+    retryLabel: 'Loading open issues',
     signal,
   });
+
   return body.data;
 }
 
-export async function exportReleasedPayoutsCsv(): Promise<{ blob: Blob; filename: string }> {
-  const result = await requestBlob("/bounties/released/export.csv");
+export async function exportReleasedPayoutsCsv(): Promise<{
+  blob: Blob;
+  filename: string;
+}> {
+  const result = await requestBlob('/bounties/released/export.csv');
+
   return {
     blob: result.blob,
-    filename: result.filename ?? "released-payouts.csv",
+    filename: result.filename ?? 'released-payouts.csv',
   };
 }
-
-
 
 export async function getBountyEvents(id: string): Promise<BountyEvent[]> {
   const body = await requestJson<{ data: BountyEvent[] }>(`/bounties/${id}/events`, {
     retry: true,
-    retryLabel: "Loading bounty events",
+    retryLabel: 'Loading bounty events',
   });
+
   return body.data;
 }
 
 export async function getMaintainerMetrics(maintainer: string): Promise<MaintainerMetrics> {
-  const body = await requestJson<{ data: MaintainerMetrics }>(`/maintainers/${maintainer}/metrics`, {
-    retry: true,
-    retryLabel: "Loading maintainer metrics",
-  });
+  const body = await requestJson<{ data: MaintainerMetrics }>(
+    `/maintainers/${maintainer}/metrics`,
+    {
+      retry: true,
+      retryLabel: 'Loading maintainer metrics',
+    }
+  );
+
   return body.data;
 }
 
 export async function getGlobalMetrics(): Promise<GlobalMetrics> {
-  const body = await requestJson<{ data: GlobalMetrics }>("/metrics", {
+  const body = await requestJson<{ data: GlobalMetrics }>('/metrics', {
     retry: true,
-    retryLabel: "Loading global metrics",
+    retryLabel: 'Loading global metrics',
   });
+
   return body.data;
 }

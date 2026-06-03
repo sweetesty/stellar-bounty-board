@@ -3,7 +3,20 @@ import path from "node:path";
 import { sendNotification, type NotificationRecipient } from "./notificationService";
 import { logStructured } from "../logger";
 import { getCache, type CacheAdapter } from "./cache";
+import { bountiesCreatedTotal, bountiesReleasedTotal } from "../metrics";
 
+/**
+ * Represents the current state of a bounty.
+ *
+ * - "open": The bounty is available for reservation.
+ * - "reserved": A contributor has reserved the bounty to work on it.
+ * - "submitted": The contributor has submitted a solution for review.
+ * - "released": The maintainer has approved the submission and released funds.
+ * - "refunded": The maintainer has cancelled the bounty and refunded the funds.
+ * - "expired": The bounty deadline has passed without completion.
+ *
+ * @typedef {"open" | "reserved" | "submitted" | "released" | "refunded" | "expired"} BountyStatus
+ */
 export type BountyStatus =
   | "open"
   | "reserved"
@@ -12,68 +25,136 @@ export type BountyStatus =
   | "refunded"
   | "expired";
 
+/**
+ * Allowed transition types for a bounty's lifecycle state machine.
+ *
+ * @typedef {"reserve" | "submit" | "release" | "refund" | "expire"} BountyTransitionType
+ */
 export type BountyTransitionType = "reserve" | "submit" | "release" | "refund" | "expire";
 
+/**
+ * Supported value types for audit log metadata records.
+ *
+ * @typedef {string | number | boolean | null} AuditMetadataValue
+ */
 export type AuditMetadataValue = string | number | boolean | null;
 
+/**
+ * Represents a historical event in the lifecycle of a bounty.
+ */
 export interface BountyEvent {
+  /** The type of lifecycle event. */
   type: "created" | "reserved" | "submitted" | "released" | "refunded" | "expired";
+  /** Unix timestamp in seconds when the event occurred. */
   timestamp: number;
+  /** Stellar public key of the actor who triggered the event. */
   actor?: string;
+  /** Additional structured event-specific details. */
   details?: Record<string, unknown>;
 }
 
+/**
+ * A record documenting a transition in bounty status for auditing.
+ */
 export interface BountyAuditLogRecord {
+  /** Unique audit record identifier. */
   id: string;
+  /** ID of the audited bounty. */
   bountyId: string;
+  /** The status before the transition. */
   fromStatus: BountyStatus;
+  /** The status after the transition. */
   toStatus: BountyStatus;
+  /** The type of transition that was executed. */
   transition: BountyTransitionType;
+  /** Stellar address or system actor who triggered the transition. */
   actor: string;
+  /** Unix timestamp in seconds when the transition occurred. */
   timestamp: number;
+  /** Additional structured metadata for the transition context. */
   metadata?: Record<string, AuditMetadataValue>;
 }
 
+/**
+ * Represents a complete bounty record stored in the database.
+ */
 export interface BountyRecord {
+  /** Unique bounty identifier (e.g. BNT-0001). */
   id: string;
+  /** GitHub repository path (e.g., owner/repo). */
   repo: string;
+  /** Associated GitHub issue number. */
   issueNumber: number;
+  /** Title of the GitHub issue. */
   title: string;
+  /** Description/summary of the bounty. */
   summary: string;
+  /** Stellar address of the maintainer who created the bounty. */
   maintainer: string;
+  /** Stellar address of the contributor who reserved/submitted the bounty. */
   contributor?: string;
+  /** Payment token symbol (e.g., XLM, USDC). */
   tokenSymbol: string;
+  /** The reward amount. */
   amount: number;
+  /** Array of labels categorized on the bounty. */
   labels: string[];
+  /** Current status of the bounty. */
   status: BountyStatus;
+  /** Unix timestamp in seconds of bounty creation. */
   createdAt: number;
+  /** Unix timestamp in seconds of the bounty deadline. */
   deadlineAt: number;
+  /** Unix timestamp in seconds of when the bounty was reserved. */
   reservedAt?: number;
+  /** Unix timestamp in seconds of when the submission was made. */
   submittedAt?: number;
+  /** Unix timestamp in seconds of when the bounty was released. */
   releasedAt?: number;
+  /** Stellar transaction hash of the release payment. */
   releasedTxHash?: string;
+  /** Unix timestamp in seconds of when the bounty was refunded. */
   refundedAt?: number;
+  /** Stellar transaction hash of the refund payment. */
   refundedTxHash?: string;
+  /** URL to the submission solution (e.g., Pull Request link). */
   submissionUrl?: string;
+  /** Submission notes left by the contributor. */
   notes?: string;
   // Race condition prevention
+  /** Version number of the record used for optimistic locking. */
   version: number;
   // Event history
+  /** Event log tracking history of lifecycle transitions. */
   events: BountyEvent[];
   // Reservation timeout (in seconds from reservation)
+  /** Number of seconds after reservation before it automatically times out. */
   reservationTimeoutSeconds?: number;
 }
 
+/**
+ * Input arguments required to create a new bounty.
+ */
 export interface CreateBountyInput {
+  /** GitHub repository path (e.g., owner/repo). */
   repo: string;
+  /** Associated GitHub issue number. */
   issueNumber: number;
+  /** Title of the GitHub issue. */
   title: string;
+  /** Description/summary of the bounty. */
   summary: string;
+  /** Stellar address of the maintainer funding the bounty. */
   maintainer: string;
+  /** Payment token symbol (e.g., XLM, USDC). */
   tokenSymbol: string;
+  /** The reward amount. */
   amount: number;
+  /** Number of days before the bounty deadline is reached. */
   deadlineDays: number;
+  /** Array of tags or labels to assign to the bounty. */
   labels: string[];
+  /** Optional custom timeout in seconds for reservation expiration. */
   reservationTimeoutSeconds?: number;
 }
 
@@ -350,6 +431,13 @@ export interface ListBountiesOptions {
   q?: string;
 }
 
+/**
+ * Retrieves a list of all bounties, normalized and sorted by creation date descending.
+ * Optionally filters the results by a search query matching title, summary, or labels.
+ *
+ * @param {ListBountiesOptions} [options={}] - Filtering options for the bounty retrieval.
+ * @returns {BountyRecord[]} The sorted and filtered list of bounty records.
+ */
 export function listBounties(options: ListBountiesOptions = {}): BountyRecord[] {
   const records = normalizeRecords(readStore());
   let sorted = [...records].sort((a, b) => b.createdAt - a.createdAt);
@@ -377,6 +465,10 @@ const BOUNTY_LIST_TTL_SECONDS = 5;
  * path. The full normalized+sorted list is cached (5s TTL) so it is shared
  * across replicas via Redis; the cheap `q` filter is applied to the cached list
  * per request. Writes call {@link invalidateBountyCache}.
+ *
+ * @param {ListBountiesOptions} [options={}] - Filtering options for the bounty retrieval.
+ * @param {CacheAdapter} [cache=getCache()] - The cache adapter to use for caching.
+ * @returns {Promise<BountyRecord[]>} A promise that resolves to the sorted and filtered list of bounty records.
  */
 export async function listBountiesCached(
   options: ListBountiesOptions = {},
@@ -403,7 +495,12 @@ export async function listBountiesCached(
   );
 }
 
-/** Drop the cached bounty list so the next read reflects a mutation (#361). */
+/**
+ * Drop the cached bounty list so the next read reflects a mutation (#361).
+ *
+ * @param {CacheAdapter} [cache=getCache()] - The cache adapter to invalidate the cache from.
+ * @returns {Promise<void>} A promise that resolves when the cache has been invalidated.
+ */
 export async function invalidateBountyCache(cache: CacheAdapter = getCache()): Promise<void> {
   await cache.del(BOUNTY_LIST_CACHE_KEY);
 }
@@ -424,6 +521,15 @@ async function withGlobalLock<T>(fn: () => T | Promise<T>): Promise<T> {
   }
 }
 
+/**
+ * Creates a new bounty record and persists it to the store.
+ *
+ * Acquires a global lock during execution to prevent race conditions. Invalidates
+ * the bounty cache and triggers an asynchronous, fire-and-forget notification to the maintainer.
+ *
+ * @param {CreateBountyInput} input - The input parameters for creating the bounty.
+ * @returns {Promise<BountyRecord>} A promise that resolves to the newly created bounty record.
+ */
 export async function createBounty(input: CreateBountyInput): Promise<BountyRecord> {
   return withGlobalLock(async () => {
     const records = listBounties();
@@ -448,6 +554,9 @@ export async function createBounty(input: CreateBountyInput): Promise<BountyReco
 
     writeStore([bounty, ...records]);
     await invalidateBountyCache();
+    
+    // Increment Prometheus counter for bounty creation
+    bountiesCreatedTotal.inc();
 
     // Trigger notification on create
     const recipients: NotificationRecipient[] = [{ role: "maintainer", address: input.maintainer }];
@@ -468,6 +577,20 @@ export async function createBounty(input: CreateBountyInput): Promise<BountyReco
   });
 }
 
+/**
+ * Reserves an open bounty for a specific contributor.
+ *
+ * Acquires a global lock during execution. If `expectedVersion` is provided,
+ * it verifies that the bounty's version matches, preventing race conditions.
+ *
+ * @param {string} id - The unique ID of the bounty to reserve.
+ * @param {string} contributor - The Stellar address of the contributor reserving the bounty.
+ * @param {number} [expectedVersion] - The expected version of the bounty record for concurrency control.
+ * @returns {Promise<BountyRecord>} A promise that resolves to the updated bounty record.
+ * @throws {Error} If the bounty is not found.
+ * @throws {Error} If the bounty is not in the "open" status.
+ * @throws {Error} If the provided `expectedVersion` does not match the bounty's current version.
+ */
 export async function reserveBounty(id: string, contributor: string, expectedVersion?: number): Promise<BountyRecord> {
   return withGlobalLock(async () => {
     const records = listBounties();
@@ -507,6 +630,20 @@ export async function reserveBounty(id: string, contributor: string, expectedVer
   });
 }
 
+/**
+ * Submits a solution for a reserved bounty.
+ *
+ * Acquires a global lock during execution. The bounty status transitions from "reserved" to "submitted".
+ *
+ * @param {string} id - The unique ID of the bounty.
+ * @param {string} contributor - The Stellar address of the contributor making the submission.
+ * @param {string} submissionUrl - The URL pointing to the pull request or solution.
+ * @param {string} [notes] - Optional additional notes or details about the submission.
+ * @returns {Promise<BountyRecord>} A promise that resolves to the updated bounty record.
+ * @throws {Error} If the bounty is not found.
+ * @throws {Error} If the bounty is not currently in the "reserved" status.
+ * @throws {Error} If the contributor address does not match the contributor who reserved the bounty.
+ */
 export async function submitBounty(
   id: string,
   contributor: string,
@@ -554,6 +691,19 @@ export async function submitBounty(
   });
 }
 
+/**
+ * Releases the funds for a submitted bounty, marking it as finalized.
+ *
+ * Acquires a global lock during execution. Transitions the bounty status to "released".
+ *
+ * @param {string} id - The unique ID of the bounty.
+ * @param {string} maintainer - The Stellar address of the maintainer releasing the bounty.
+ * @param {string} [transactionHash] - Optional Stellar transaction hash for the payment.
+ * @returns {Promise<BountyRecord>} A promise that resolves to the updated bounty record.
+ * @throws {Error} If the bounty is not found.
+ * @throws {Error} If the maintainer address does not match the maintainer who created the bounty.
+ * @throws {Error} If the bounty status is not "submitted".
+ */
 export async function releaseBounty(
   id: string,
   maintainer: string,
@@ -594,10 +744,29 @@ export async function releaseBounty(
       },
     ]);
     await invalidateBountyCache();
+    
+    // Increment Prometheus counter for bounty release
+    bountiesReleasedTotal.inc();
+    
     return persisted;
   });
 }
 
+/**
+ * Refunds the bounty funds back to the maintainer.
+ *
+ * Acquires a global lock during execution. The bounty cannot be refunded if it is already
+ * finalized ("released" or "refunded") or if it has active submissions that need review.
+ *
+ * @param {string} id - The unique ID of the bounty.
+ * @param {string} maintainer - The Stellar address of the maintainer requesting the refund.
+ * @param {string} [transactionHash] - Optional Stellar transaction hash for the refund transaction.
+ * @returns {Promise<BountyRecord>} A promise that resolves to the updated bounty record.
+ * @throws {Error} If the bounty is not found.
+ * @throws {Error} If the maintainer address does not match the maintainer of the bounty.
+ * @throws {Error} If the bounty is already finalized ("released" or "refunded").
+ * @throws {Error} If the bounty is in the "submitted" status and has not been reviewed.
+ */
 export async function refundBounty(
   id: string,
   maintainer: string,
@@ -645,17 +814,36 @@ export async function refundBounty(
   });
 }
 
+/**
+ * Paginated response structure containing a slice of bounty audit logs.
+ */
 export interface AuditLogPage {
+  /** The list of audit log records on the current page. */
   data: BountyAuditLogRecord[];
+  /** Pagination metadata. */
   pagination: {
+    /** The limit applied to the query. */
     limit: number;
+    /** The offset applied to the query. */
     offset: number;
+    /** Total number of matching records in the system. */
     total: number;
+    /** Indicates if more records are available. */
     hasMore: boolean;
+    /** The next offset to query, or null if there are no more records. */
     nextOffset: number | null;
   };
 }
 
+/**
+ * Retrieves paginated audit logs for a specific bounty.
+ *
+ * @param {string} bountyId - The unique ID of the bounty.
+ * @param {Object} [options={}] - Pagination options.
+ * @param {number} [options.limit=20] - The maximum number of log records to return.
+ * @param {number} [options.offset=0] - The starting index for pagination.
+ * @returns {AuditLogPage} An object containing the requested page of audit logs and pagination metadata.
+ */
 export function listBountyAuditLogs(
   bountyId: string,
   options: { limit?: number; offset?: number } = {},
@@ -677,6 +865,13 @@ export function listBountyAuditLogs(
   };
 }
 
+/**
+ * Retrieves the event history/timeline for a specific bounty.
+ *
+ * @param {string} bountyId - The unique ID of the bounty.
+ * @returns {BountyEvent[]} An array of event records detailing the bounty's lifecycle events.
+ * @throws {Error} If the bounty is not found.
+ */
 export function getBountyEvents(bountyId: string): BountyEvent[] {
   const records = listBounties();
   const bounty = records.find((b) => b.id === bountyId);
@@ -686,19 +881,38 @@ export function getBountyEvents(bountyId: string): BountyEvent[] {
   return bounty.events ?? [];
 }
 
+/**
+ * Aggregate metrics and performance tracking data for a maintainer.
+ */
 export interface MaintainerMetrics {
+  /** The total number of bounties created by the maintainer. */
   totalBounties: number;
+  /** Count of bounties currently in "open" status. */
   openCount: number;
+  /** Count of bounties currently in "reserved" status. */
   reservedCount: number;
+  /** Count of bounties currently in "submitted" status. */
   submittedCount: number;
+  /** Count of bounties successfully "released" status. */
   releasedCount: number;
+  /** Count of bounties refunded. */
   refundedCount: number;
+  /** Count of bounties that have expired. */
   expiredCount: number;
+  /** Total value of rewards funded by this maintainer. */
   totalFunded: number;
+  /** Total value of rewards paid out/released to contributors. */
   totalReleased: number;
+  /** Average reward value for the maintainer's bounties. */
   averageRewardAmount: number;
 }
 
+/**
+ * Computes and returns aggregated metrics for a specific maintainer.
+ *
+ * @param {string} maintainer - The Stellar address of the maintainer.
+ * @returns {MaintainerMetrics} An object containing counts, sums, and averages of the maintainer's bounties.
+ */
 export function getMaintainerMetrics(maintainer: string): MaintainerMetrics {
   const bounties = listBounties().filter((b) => b.maintainer === maintainer);
   const totalFunded = bounties.reduce((sum, b) => sum + b.amount, 0);
@@ -718,20 +932,39 @@ export function getMaintainerMetrics(maintainer: string): MaintainerMetrics {
   };
 }
 
+/**
+ * Ecosystem-wide aggregate statistics across all platform activity.
+ */
 export interface GlobalMetrics {
+  /** Total number of bounties created across the platform. */
   totalBounties: number;
+  /** Total count of open bounties. */
   openCount: number;
+  /** Total count of reserved bounties. */
   reservedCount: number;
+  /** Total count of submitted bounties. */
   submittedCount: number;
+  /** Total count of released bounties. */
   releasedCount: number;
+  /** Total count of refunded bounties. */
   refundedCount: number;
+  /** Total count of expired bounties. */
   expiredCount: number;
+  /** Total amount of tokens funded across the platform. */
   totalFunded: number;
+  /** Total amount of tokens released to contributors. */
   totalReleased: number;
+  /** Total number of unique maintainer addresses. */
   uniqueMaintainers: number;
+  /** Total number of unique contributor addresses. */
   uniqueContributors: number;
 }
 
+/**
+ * Computes and returns global ecosystem-wide metrics for all bounties.
+ *
+ * @returns {GlobalMetrics} An object summarizing total counts, funding, and unique actor metrics.
+ */
 export function getGlobalMetrics(): GlobalMetrics {
   const bounties = listBounties();
   const totalFunded = bounties.reduce((sum, b) => sum + b.amount, 0);
@@ -757,12 +990,24 @@ export function getGlobalMetrics(): GlobalMetrics {
 }
 
 
+/**
+ * Represents a contributor's entry in the platform leaderboard.
+ */
 export interface LeaderboardEntry {
+  /** The Stellar address of the contributor. */
   address: string;
+  /** Total reward tokens earned/released to the contributor. */
   totalXlm: number;
+  /** Total number of successfully completed and released bounties. */
   bountiesCompleted: number;
 }
 
+/**
+ * Retrieves a leaderboard of top contributors based on their earned token rewards and completed bounties.
+ *
+ * @param {number} [limit=10] - The maximum number of leaderboard entries to return.
+ * @returns {LeaderboardEntry[]} A sorted array of leaderboard entries.
+ */
 export function getLeaderboard(limit = 10): LeaderboardEntry[] {
   const entries = new Map<string, LeaderboardEntry>();
 

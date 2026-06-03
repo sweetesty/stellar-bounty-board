@@ -42,11 +42,19 @@ Contract (`contracts`)
 - Soroban Rust contract scaffold
 - Escrow-style bounty lifecycle methods
 
+## Architecture
+
+See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for system architecture, data ownership, and deployment diagrams.
+
+The [bounty lifecycle sequence diagram](docs/ARCHITECTURE.md#bounty-lifecycle-sequence) shows the create, reserve, submit, release, refund, dispute, and resolution flows across Maintainer, Contributor, Arbiter, Backend, and Contract actors.
+
 ## Deployment Guide
 
 See [docs/deployment.md](docs/deployment.md) for step-by-step instructions to deploy the backend on Render and the frontend on Vercel, including required environment variables, health check paths, and troubleshooting tips.
 
 For detailed architecture diagrams and data flow documentation, see [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+
+For the persistence decision (JSON vs database) see the ADR: [docs/adr/0001-json-file-persistence.md](docs/adr/0001-json-file-persistence.md).
 
 For integrating GitHub webhooks — including the HMAC-SHA256 algorithm, Node.js and Python verification examples, timing-safe comparison guidance, and troubleshooting — see [docs/webhook-signatures.md](docs/webhook-signatures.md).
 
@@ -112,6 +120,35 @@ Coverage report (Istanbul via Vitest):
 ```bash
 npm run test:coverage
 ```
+
+### Load Testing
+
+The load-test script uses [autocannon](https://github.com/mcollina/autocannon) to run a mixed read/write workload against the backend. It seeds 20 bounties and opens 20 concurrent connections for 30 seconds.
+
+Start the backend first, then run:
+
+```bash
+npm run load:test
+```
+
+Configurable via CLI flags:
+
+| Flag            | Default | Description                        |
+|-----------------|---------|------------------------------------|
+| `--connections` | `20`    | Number of concurrent connections   |
+| `--duration`    | `30`    | Duration in seconds                |
+| `--bounties`    | `20`    | Number of seed bounties            |
+| `--url`         | `http://localhost:3001` | Backend base URL    |
+
+Example with custom options:
+
+```bash
+npm run load:test -- --connections 50 --duration 60 --bounties 40
+```
+
+Workload distribution: **70 %** `GET /api/bounties` · **20 %** `GET /api/bounties/:id` · **10 %** `POST /api/bounties/:id/reserve`.
+
+Results include p50/p99/max latency, requests/s, bytes/s, error count, and error rate.
 
 ## Contract Notes
 

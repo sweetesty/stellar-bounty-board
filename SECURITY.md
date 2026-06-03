@@ -136,6 +136,12 @@ When adding logging:
 - If you introduce a new field name that may carry a secret, add it to the
   `redact.paths` list in `backend/src/logger.ts`.
 
+## Authentication Architecture
+
+The maintainer API routes are protected by Stellar keypair signature verification rather than JWT or session tokens. See [ADR 0002 — Stellar Signature Authentication](docs/adr/0002-stellar-signature-auth.md) for the rationale, verification flow, multi-key support, and replay attack considerations.
+
+---
+
 ## Automated Security Analysis
 
 This repository runs [GitHub CodeQL](https://codeql.github.com/) on the `javascript` language

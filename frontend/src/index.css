@@ -65,6 +65,22 @@ a {
   text-decoration: none;
 }
 
+.primary-link:focus-visible,
+.secondary-link:focus-visible,
+.primary-button:focus-visible,
+.secondary-button:focus-visible,
+.ghost-button:focus-visible,
+.inline-link:focus-visible,
+.submission-link:focus-visible,
+.modal-close-btn:focus-visible,
+.checklist-item__toggle:focus-visible,
+.copy-meta-button:focus-visible,
+.filter-chip:focus-visible,
+.repo-group__title:focus-visible {
+  outline: 3px solid rgba(30, 143, 111, 0.42);
+  outline-offset: 3px;
+}
+
 .inline-link {
   text-decoration: underline;
   text-decoration-color: rgba(54, 63, 59, 0.28);
@@ -73,6 +89,17 @@ a {
 
 .inline-link:hover {
   text-decoration-color: rgba(54, 63, 59, 0.5);
+}
+
+.repo-group__title {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  padding: 0;
+  text-align: left;
 }
 
 button,
@@ -749,7 +776,7 @@ select {
   padding: 18px;
 }
 
-.bounty-card[role="link"] {
+.bounty-card[tabindex="0"] {
   cursor: pointer;
   transition:
     transform 140ms ease,
@@ -757,13 +784,13 @@ select {
     background-color 140ms ease;
 }
 
-.bounty-card[role="link"]:hover {
+.bounty-card[tabindex="0"]:hover {
   transform: translateY(-1px);
   border-color: rgba(54, 63, 59, 0.2);
   background: rgba(255, 255, 255, 0.74);
 }
 
-.bounty-card[role="link"]:focus-visible {
+.bounty-card[tabindex="0"]:focus-visible {
   outline: 3px solid rgba(30, 143, 111, 0.35);
   outline-offset: 3px;
 }
@@ -1386,6 +1413,7 @@ select {
 }
 
 .submission-modal__inner {
+  position: relative;
   padding: 28px;
   display: grid;
   gap: 18px;
@@ -1404,6 +1432,9 @@ select {
 }
 
 .modal-close-btn {
+  position: absolute;
+  top: 28px;
+  right: 28px;
   background: transparent;
   border: 1px solid var(--line);
   border-radius: 999px;
@@ -1704,7 +1735,7 @@ select {
   }
 
   /* 3. Card / button hover lifts — remove the translateY so cards stay put */
-  .bounty-card[role="link"]:hover,
+  .bounty-card[tabindex="0"]:hover,
   .primary-link:hover,
   .secondary-link:hover,
   .primary-button:hover,
@@ -1735,4 +1766,16 @@ select {
   /* 6. Deadline / countdown text — the text updates via React re-renders
         (no CSS animation), but any wrapping transition is already covered
         by the global rule above. No extra rule needed. */
+}
+
+.countdown {
+  font-size: 0.9em;
+  opacity: 0.8;
+  margin-left: 0.5rem;
+}
+
+.countdown--urgent {
+  color: #ff4d4d;
+  font-weight: bold;
+  opacity: 1;
 }
